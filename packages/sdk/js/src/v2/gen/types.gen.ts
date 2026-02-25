@@ -677,6 +677,137 @@ export type EventQuestionRejected = {
   }
 }
 
+export type AegisRuleSeverity = "low" | "medium" | "high"
+
+export type AegisSessionState = {
+  session_id: string
+  mode?: "advisory"
+  status?: "running" | "paused"
+  queue: number
+  checks?: number
+  unresolved?: number
+  model?: string
+  tokens?: {
+    input?: number
+    output?: number
+  }
+  interventions: number
+  rules: {
+    global: number
+    project: number
+    active: number
+  }
+  mining: {
+    status: "idle" | "running" | "done"
+    last_run?: number
+  }
+  last_violation?: {
+    rule_id?: string
+    statement: string
+    severity: AegisRuleSeverity
+    time: number
+    source: "deterministic" | "supervisor"
+    kind: string
+  }
+  last_intervention?: {
+    rule_id?: string
+    fingerprint: string
+    severity: AegisRuleSeverity
+    level: number
+    time: number
+  }
+}
+
+export type EventAegisStateUpdated = {
+  type: "aegis.state.updated"
+  properties: {
+    sessionID: string
+    state: AegisSessionState
+  }
+}
+
+export type AegisEventType =
+  | "observe"
+  | "observe_tool_call"
+  | "observe_tool_result"
+  | "observe_text"
+  | "observe_patch"
+  | "check_started"
+  | "check_completed"
+  | "violation"
+  | "intervention"
+  | "intervention_injected"
+  | "issue_unresolved"
+  | "issue_resolved"
+  | "escalation"
+  | "override"
+  | "feedback"
+  | "bootstrap"
+  | "memory"
+
+export type AegisEvent = {
+  id: string
+  session_id: string
+  message_id?: string
+  part_id?: string
+  rule_id?: string
+  type: AegisEventType
+  payload: {
+    [key: string]: unknown
+  }
+  time: {
+    created: number
+    updated: number
+  }
+}
+
+export type EventAegisEventCreated = {
+  type: "aegis.event.created"
+  properties: {
+    sessionID: string
+    event: AegisEvent
+  }
+}
+
+export type AegisRuleScope = "global" | "project"
+
+export type AegisRuleKind = "mined" | "explicit" | "runtime"
+
+export type AegisMatcher = {
+  tool?: string
+  pattern?: string
+  not_pattern?: string
+}
+
+export type AegisRuleSource = {
+  type: "instruction" | "package" | "history" | "override" | "feedback" | "runtime" | "memory"
+  value: string
+}
+
+export type AegisRule = {
+  id: string
+  scope: AegisRuleScope
+  project_id?: string
+  kind: AegisRuleKind
+  statement: string
+  matcher: AegisMatcher
+  severity: AegisRuleSeverity
+  confidence: number
+  source?: AegisRuleSource
+  active: boolean
+  time: {
+    created: number
+    updated: number
+  }
+}
+
+export type EventAegisRuleUpdated = {
+  type: "aegis.rule.updated"
+  properties: {
+    rule: AegisRule
+  }
+}
+
 export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
@@ -963,6 +1094,9 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
+  | EventAegisStateUpdated
+  | EventAegisEventCreated
+  | EventAegisRuleUpdated
   | EventSessionCompacted
   | EventFileWatcherUpdated
   | EventTodoUpdated
@@ -1015,6 +1149,14 @@ export type KeybindsConfig = {
    * Toggle sidebar
    */
   sidebar_toggle?: string
+  /**
+   * Toggle Aegis fullscreen view
+   */
+  aegis_view_toggle?: string
+  /**
+   * @deprecated Legacy alias for aegis_view_toggle
+   */
+  aegis_toggle?: string
   /**
    * Toggle session scrollbar
    */
@@ -1504,6 +1646,30 @@ export type AgentConfig = {
     | undefined
 }
 
+export type AegisReviewConfig = {
+  tool_call?: boolean
+  tool_result?: boolean
+  assistant_text?: boolean
+  patch?: boolean
+}
+
+export type AegisEscalationConfig = {
+  warning_after?: number
+  critical_after?: number
+}
+
+/**
+ * Aegis supervisor configuration
+ */
+export type AegisConfig = {
+  enabled?: boolean
+  provider?: string
+  model?: string
+  max_tokens_per_check?: number
+  review?: AegisReviewConfig
+  escalation?: AegisEscalationConfig
+}
+
 export type ProviderConfig = {
   api?: string
   name?: string
@@ -1788,6 +1954,7 @@ export type Config = {
     compaction?: AgentConfig
     [key: string]: AgentConfig | undefined
   }
+  aegis?: AegisConfig
   /**
    * Custom provider configurations and model overrides
    */
@@ -2089,6 +2256,79 @@ export type McpResource = {
   description?: string
   mimeType?: string
   client: string
+}
+
+export type AegisWorkspaceSession = {
+  session_id: string
+  title: string
+  updated: number
+  mode: "advisory"
+  status: "running" | "paused"
+  queue: number
+  checks: number
+  unresolved: number
+  interventions: number
+  model?: string
+  tokens: {
+    input: number
+    output: number
+  }
+  last_violation?: {
+    rule_id?: string
+    statement: string
+    severity: AegisRuleSeverity
+    time: number
+    source: "deterministic" | "supervisor"
+    kind: string
+  }
+  last_intervention?: {
+    rule_id?: string
+    fingerprint: string
+    severity: AegisRuleSeverity
+    level: number
+    time: number
+  }
+}
+
+export type AegisWorkspace = {
+  supervisor: {
+    provider?: string
+    model?: string
+    configured: boolean
+  }
+  rules: {
+    global: Array<AegisRule>
+    project: Array<AegisRule>
+    active: number
+    total: number
+  }
+  sessions: Array<AegisWorkspaceSession>
+  interventions: Array<AegisEvent>
+}
+
+export type AegisWorkspaceEvents = {
+  items: Array<AegisEvent>
+  next_cursor?: number
+}
+
+export type AegisSnapshot = {
+  state: AegisSessionState
+  events: Array<AegisEvent>
+}
+
+export type AegisMetrics = {
+  session_id: string
+  mode: "advisory"
+  status: "running" | "paused"
+  queue: number
+  checks: number
+  interventions: number
+  unresolved: number
+  model?: string
+  tokens: {
+    input: number
+    output: number
+  }
 }
 
 export type TextPartInput = {
@@ -3072,6 +3312,74 @@ export type SessionStatusResponses = {
 
 export type SessionStatusResponse = SessionStatusResponses[keyof SessionStatusResponses]
 
+export type SessionAegisWorkspaceData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Maximum number of intervention events to include
+     */
+    limit?: number
+  }
+  url: "/session/aegis/workspace"
+}
+
+export type SessionAegisWorkspaceErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionAegisWorkspaceError = SessionAegisWorkspaceErrors[keyof SessionAegisWorkspaceErrors]
+
+export type SessionAegisWorkspaceResponses = {
+  /**
+   * Aegis workspace snapshot
+   */
+  200: AegisWorkspace
+}
+
+export type SessionAegisWorkspaceResponse = SessionAegisWorkspaceResponses[keyof SessionAegisWorkspaceResponses]
+
+export type SessionAegisWorkspaceEventsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Maximum number of events to return
+     */
+    limit?: number
+    /**
+     * Return events before this timestamp cursor
+     */
+    cursor?: number
+  }
+  url: "/session/aegis/workspace/events"
+}
+
+export type SessionAegisWorkspaceEventsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionAegisWorkspaceEventsError =
+  SessionAegisWorkspaceEventsErrors[keyof SessionAegisWorkspaceEventsErrors]
+
+export type SessionAegisWorkspaceEventsResponses = {
+  /**
+   * Aegis workspace event page
+   */
+  200: AegisWorkspaceEvents
+}
+
+export type SessionAegisWorkspaceEventsResponse =
+  SessionAegisWorkspaceEventsResponses[keyof SessionAegisWorkspaceEventsResponses]
+
 export type SessionDeleteData = {
   body?: never
   path: {
@@ -3244,6 +3552,235 @@ export type SessionTodoResponses = {
 }
 
 export type SessionTodoResponse = SessionTodoResponses[keyof SessionTodoResponses]
+
+export type SessionAegisData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/aegis"
+}
+
+export type SessionAegisErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionAegisError = SessionAegisErrors[keyof SessionAegisErrors]
+
+export type SessionAegisResponses = {
+  /**
+   * Aegis snapshot
+   */
+  200: AegisSnapshot
+}
+
+export type SessionAegisResponse = SessionAegisResponses[keyof SessionAegisResponses]
+
+export type SessionAegisMetricsData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/aegis/metrics"
+}
+
+export type SessionAegisMetricsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionAegisMetricsError = SessionAegisMetricsErrors[keyof SessionAegisMetricsErrors]
+
+export type SessionAegisMetricsResponses = {
+  /**
+   * Aegis metrics
+   */
+  200: AegisMetrics
+}
+
+export type SessionAegisMetricsResponse = SessionAegisMetricsResponses[keyof SessionAegisMetricsResponses]
+
+export type SessionAegisControlData = {
+  body?: {
+    action: "pause" | "resume"
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/aegis/control"
+}
+
+export type SessionAegisControlErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionAegisControlError = SessionAegisControlErrors[keyof SessionAegisControlErrors]
+
+export type SessionAegisControlResponses = {
+  /**
+   * Updated Aegis state
+   */
+  200: AegisSessionState
+}
+
+export type SessionAegisControlResponse = SessionAegisControlResponses[keyof SessionAegisControlResponses]
+
+export type SessionAegisEventsData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/aegis/events"
+}
+
+export type SessionAegisEventsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionAegisEventsError = SessionAegisEventsErrors[keyof SessionAegisEventsErrors]
+
+export type SessionAegisEventsResponses = {
+  /**
+   * Aegis events
+   */
+  200: Array<AegisEvent>
+}
+
+export type SessionAegisEventsResponse = SessionAegisEventsResponses[keyof SessionAegisEventsResponses]
+
+export type SessionAegisOverrideData = {
+  body?: {
+    scope?: AegisRuleScope
+    statement: string
+    matcher: AegisMatcher
+    severity?: AegisRuleSeverity
+    active?: boolean
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/aegis/override"
+}
+
+export type SessionAegisOverrideErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionAegisOverrideError = SessionAegisOverrideErrors[keyof SessionAegisOverrideErrors]
+
+export type SessionAegisOverrideResponses = {
+  /**
+   * Created rule
+   */
+  200: AegisRule
+}
+
+export type SessionAegisOverrideResponse = SessionAegisOverrideResponses[keyof SessionAegisOverrideResponses]
+
+export type SessionAegisFeedbackData = {
+  body?: {
+    eventID: string
+    helpful: boolean
+    note?: string
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/aegis/feedback"
+}
+
+export type SessionAegisFeedbackErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionAegisFeedbackError = SessionAegisFeedbackErrors[keyof SessionAegisFeedbackErrors]
+
+export type SessionAegisFeedbackResponses = {
+  /**
+   * Feedback result
+   */
+  200: boolean
+}
+
+export type SessionAegisFeedbackResponse = SessionAegisFeedbackResponses[keyof SessionAegisFeedbackResponses]
 
 export type SessionInitData = {
   body?: {

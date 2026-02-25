@@ -3,6 +3,9 @@
 import { client } from "./client.gen.js"
 import { buildClientParams, type Client, type Options as Options2, type TDataShape } from "./client/index.js"
 import type {
+  AegisMatcher,
+  AegisRuleScope,
+  AegisRuleSeverity,
   AgentPartInput,
   AppAgentsResponses,
   AppLogErrors,
@@ -100,6 +103,22 @@ import type {
   QuestionReplyResponses,
   SessionAbortErrors,
   SessionAbortResponses,
+  SessionAegisControlErrors,
+  SessionAegisControlResponses,
+  SessionAegisErrors,
+  SessionAegisEventsErrors,
+  SessionAegisEventsResponses,
+  SessionAegisFeedbackErrors,
+  SessionAegisFeedbackResponses,
+  SessionAegisMetricsErrors,
+  SessionAegisMetricsResponses,
+  SessionAegisOverrideErrors,
+  SessionAegisOverrideResponses,
+  SessionAegisResponses,
+  SessionAegisWorkspaceErrors,
+  SessionAegisWorkspaceEventsErrors,
+  SessionAegisWorkspaceEventsResponses,
+  SessionAegisWorkspaceResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
@@ -1070,6 +1089,76 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
+   * Get Aegis workspace
+   *
+   * Retrieve workspace-wide Aegis rules, sessions, and interventions.
+   */
+  public aegisWorkspace<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionAegisWorkspaceResponses,
+      SessionAegisWorkspaceErrors,
+      ThrowOnError
+    >({
+      url: "/session/aegis/workspace",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Aegis workspace events
+   *
+   * Retrieve paginated workspace-wide Aegis events.
+   */
+  public aegisWorkspaceEvents<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      limit?: number
+      cursor?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionAegisWorkspaceEventsResponses,
+      SessionAegisWorkspaceEventsErrors,
+      ThrowOnError
+    >({
+      url: "/session/aegis/workspace/events",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Delete session
    *
    * Delete a session and permanently remove all associated data, including messages and history.
@@ -1227,6 +1316,231 @@ export class Session2 extends HeyApiClient {
       url: "/session/{sessionID}/todo",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Get Aegis state
+   *
+   * Retrieve Aegis supervisor state and recent events for a session.
+   */
+  public aegis<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionAegisResponses, SessionAegisErrors, ThrowOnError>({
+      url: "/session/{sessionID}/aegis",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Aegis metrics
+   *
+   * Retrieve Aegis supervisor metrics for a session.
+   */
+  public aegisMetrics<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionAegisMetricsResponses, SessionAegisMetricsErrors, ThrowOnError>({
+      url: "/session/{sessionID}/aegis/metrics",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Control Aegis supervisor
+   *
+   * Pause or resume the Aegis supervisor for this session.
+   */
+  public aegisControl<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      action?: "pause" | "resume"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "action" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionAegisControlResponses, SessionAegisControlErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/aegis/control",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Get Aegis events
+   *
+   * Retrieve recent Aegis supervision events for a session.
+   */
+  public aegisEvents<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionAegisEventsResponses, SessionAegisEventsErrors, ThrowOnError>({
+      url: "/session/{sessionID}/aegis/events",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create Aegis override
+   *
+   * Create a persistent Aegis invariant override for this project or globally.
+   */
+  public aegisOverride<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scope?: AegisRuleScope
+      statement?: string
+      matcher?: AegisMatcher
+      severity?: AegisRuleSeverity
+      active?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "scope" },
+            { in: "body", key: "statement" },
+            { in: "body", key: "matcher" },
+            { in: "body", key: "severity" },
+            { in: "body", key: "active" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionAegisOverrideResponses,
+      SessionAegisOverrideErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/aegis/override",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Submit Aegis feedback
+   *
+   * Submit feedback for an Aegis intervention event.
+   */
+  public aegisFeedback<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      eventID?: string
+      helpful?: boolean
+      note?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "eventID" },
+            { in: "body", key: "helpful" },
+            { in: "body", key: "note" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionAegisFeedbackResponses,
+      SessionAegisFeedbackErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/aegis/feedback",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
