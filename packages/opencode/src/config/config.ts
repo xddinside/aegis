@@ -241,7 +241,15 @@ export namespace Config {
       result.share = "auto"
     }
 
-    if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
+    const keybinds = Keybinds.parse(result.keybinds ?? {})
+    result.keybinds = keybinds
+    if (
+      keybinds.aegis_toggle &&
+      keybinds.aegis_toggle !== "none" &&
+      (!keybinds.aegis_view_toggle || keybinds.aegis_view_toggle === "<leader>j")
+    ) {
+      keybinds.aegis_view_toggle = keybinds.aegis_toggle
+    }
 
     // Apply flag overrides for compaction settings
     if (Flag.OPENCODE_DISABLE_AUTOCOMPACT) {
@@ -683,6 +691,50 @@ export namespace Config {
   })
   export type Skills = z.infer<typeof Skills>
 
+  export const AegisReview = z
+    .object({
+      tool_call: z.boolean().optional().default(true),
+      tool_result: z.boolean().optional().default(true),
+      assistant_text: z.boolean().optional().default(true),
+      patch: z.boolean().optional().default(true),
+    })
+    .meta({
+      ref: "AegisReviewConfig",
+    })
+  export type AegisReview = z.infer<typeof AegisReview>
+
+  export const AegisEscalation = z
+    .object({
+      warning_after: z.number().int().positive().optional().default(2),
+      critical_after: z.number().int().positive().optional().default(4),
+    })
+    .meta({
+      ref: "AegisEscalationConfig",
+    })
+  export type AegisEscalation = z.infer<typeof AegisEscalation>
+
+  export const Aegis = z
+    .object({
+      enabled: z.boolean().optional().default(true),
+      provider: z.string().optional(),
+      model: z.string().optional(),
+      max_tokens_per_check: z.number().int().positive().optional().default(800),
+      review: AegisReview.optional().default(() => ({
+        tool_call: true,
+        tool_result: true,
+        assistant_text: true,
+        patch: true,
+      })),
+      escalation: AegisEscalation.optional().default(() => ({
+        warning_after: 2,
+        critical_after: 4,
+      })),
+    })
+    .meta({
+      ref: "AegisConfig",
+    })
+  export type Aegis = z.infer<typeof Aegis>
+
   export const Agent = z
     .object({
       model: ModelId.optional(),
@@ -779,6 +831,8 @@ export namespace Config {
       editor_open: z.string().optional().default("<leader>e").describe("Open external editor"),
       theme_list: z.string().optional().default("<leader>t").describe("List available themes"),
       sidebar_toggle: z.string().optional().default("<leader>b").describe("Toggle sidebar"),
+      aegis_view_toggle: z.string().optional().default("<leader>j").describe("Toggle Aegis fullscreen view"),
+      aegis_toggle: z.string().optional().default("none").describe("@deprecated Legacy alias for aegis_view_toggle"),
       scrollbar_toggle: z.string().optional().default("none").describe("Toggle session scrollbar"),
       username_toggle: z.string().optional().default("none").describe("Toggle username visibility"),
       status_view: z.string().optional().default("<leader>s").describe("View status"),
@@ -1094,6 +1148,7 @@ export namespace Config {
         .catchall(Agent)
         .optional()
         .describe("Agent configuration, see https://opencode.ai/docs/agents"),
+      aegis: Aegis.optional().describe("Aegis supervisor configuration"),
       provider: z
         .record(z.string(), Provider)
         .optional()

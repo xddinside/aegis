@@ -15,6 +15,7 @@ import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { Aegis } from "@/aegis"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -147,6 +148,15 @@ export namespace SessionProcessor {
                       metadata: value.providerMetadata,
                     })
                     toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                    Aegis.observeToolCall({
+                      sessionID: input.assistantMessage.sessionID,
+                      messageID: input.assistantMessage.parentID,
+                      partID: part.id,
+                      tool: value.toolName,
+                      input: (value.input ?? {}) as Record<string, unknown>,
+                    }).catch((error) => {
+                      log.error("aegis observe failed", { error, tool: value.toolName })
+                    })
 
                     const parts = await MessageV2.parts(input.assistantMessage.id)
                     const lastThree = parts.slice(-DOOM_LOOP_THRESHOLD)
@@ -180,6 +190,12 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    const output = {
+                      output: value.output.output,
+                      metadata: value.output.metadata,
+                      title: value.output.title,
+                      attachments: value.output.attachments,
+                    }
                     await Session.updatePart({
                       ...match,
                       state: {
@@ -194,6 +210,15 @@ export namespace SessionProcessor {
                         },
                         attachments: value.output.attachments,
                       },
+                    })
+                    Aegis.observeToolResult({
+                      sessionID: input.assistantMessage.sessionID,
+                      messageID: input.assistantMessage.parentID,
+                      partID: match.id,
+                      tool: match.tool,
+                      output: output as Record<string, unknown>,
+                    }).catch((error) => {
+                      log.error("aegis observe tool result failed", { error, tool: match.tool })
                     })
 
                     delete toolcalls[value.toolCallId]
@@ -264,13 +289,21 @@ export namespace SessionProcessor {
                   if (snapshot) {
                     const patch = await Snapshot.patch(snapshot)
                     if (patch.files.length) {
-                      await Session.updatePart({
+                      const patchPart = await Session.updatePart({
                         id: Identifier.ascending("part"),
                         messageID: input.assistantMessage.id,
                         sessionID: input.sessionID,
                         type: "patch",
                         hash: patch.hash,
                         files: patch.files,
+                      })
+                      Aegis.observePatch({
+                        sessionID: input.assistantMessage.sessionID,
+                        messageID: input.assistantMessage.parentID,
+                        partID: patchPart.id,
+                        files: patch.files,
+                      }).catch((error) => {
+                        log.error("aegis observe patch failed", { error })
                       })
                     }
                     snapshot = undefined
@@ -332,6 +365,17 @@ export namespace SessionProcessor {
                     }
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
                     await Session.updatePart(currentText)
+                    if (currentText.text) {
+                      Aegis.observeText({
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        partID: currentText.id,
+                        role: "assistant",
+                        text: currentText.text,
+                      }).catch((error) => {
+                        log.error("aegis observe text failed", { error })
+                      })
+                    }
                   }
                   currentText = undefined
                   break

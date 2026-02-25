@@ -1292,6 +1292,17 @@ export namespace SessionPrompt {
       }),
     ).then((x) => x.flat().map(assign))
 
+    const text = parts
+      .filter((part): part is MessageV2.TextPart => part.type === "text" && !part.synthetic)
+      .map((part) => part.text.trim())
+      .filter(Boolean)
+      .join("\n")
+    const aegis = await import("@/aegis")
+      .then((x) => x.Aegis)
+      .catch((error) => {
+        log.error("aegis import failed", { error })
+      })
+
     await Plugin.trigger(
       "chat.message",
       {
@@ -1310,6 +1321,22 @@ export namespace SessionPrompt {
     await Session.updateMessage(info)
     for (const part of parts) {
       await Session.updatePart(part)
+    }
+
+    if (aegis && text) {
+      await Promise.all(
+        parts
+          .filter((part): part is MessageV2.TextPart => part.type === "text" && !part.synthetic)
+          .map((part) =>
+            aegis.observeText({
+              sessionID: info.sessionID,
+              messageID: info.id,
+              partID: part.id,
+              role: "user",
+              text: part.text,
+            }),
+          ),
+      )
     }
 
     return {

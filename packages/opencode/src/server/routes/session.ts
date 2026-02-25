@@ -16,6 +16,7 @@ import { Log } from "../../util/log"
 import { PermissionNext } from "@/permission/next"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+import { Aegis } from "@/aegis"
 
 const log = Log.create({ service: "server" })
 
@@ -87,6 +88,76 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const result = SessionStatus.list()
         return c.json(result)
+      },
+    )
+    .get(
+      "/aegis/workspace",
+      describeRoute({
+        summary: "Get Aegis workspace",
+        description: "Retrieve workspace-wide Aegis rules, sessions, and interventions.",
+        operationId: "session.aegis_workspace",
+        responses: {
+          200: {
+            description: "Aegis workspace snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.Workspace),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          limit: z.coerce.number().int().positive().max(200).optional().meta({
+            description: "Maximum number of intervention events to include",
+          }),
+        }),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        return c.json(await Aegis.workspace(query.limit))
+      },
+    )
+    .get(
+      "/aegis/workspace/events",
+      describeRoute({
+        summary: "Get Aegis workspace events",
+        description: "Retrieve paginated workspace-wide Aegis events.",
+        operationId: "session.aegis_workspace_events",
+        responses: {
+          200: {
+            description: "Aegis workspace event page",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.WorkspaceEvents),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          limit: z.coerce.number().int().positive().max(200).optional().meta({
+            description: "Maximum number of events to return",
+          }),
+          cursor: z.coerce.number().int().positive().optional().meta({
+            description: "Return events before this timestamp cursor",
+          }),
+        }),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        return c.json(
+          await Aegis.workspaceEvents({
+            limit: query.limit,
+            cursor: query.cursor,
+          }),
+        )
       },
     )
     .get(
@@ -180,6 +251,193 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         const todos = await Todo.get(sessionID)
         return c.json(todos)
+      },
+    )
+    .get(
+      "/:sessionID/aegis",
+      describeRoute({
+        summary: "Get Aegis state",
+        description: "Retrieve Aegis supervisor state and recent events for a session.",
+        operationId: "session.aegis",
+        responses: {
+          200: {
+            description: "Aegis snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.Snapshot),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        return c.json(await Aegis.snapshot(sessionID))
+      },
+    )
+    .get(
+      "/:sessionID/aegis/metrics",
+      describeRoute({
+        summary: "Get Aegis metrics",
+        description: "Retrieve Aegis supervisor metrics for a session.",
+        operationId: "session.aegis_metrics",
+        responses: {
+          200: {
+            description: "Aegis metrics",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.Metrics),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        return c.json(await Aegis.metrics(sessionID))
+      },
+    )
+    .post(
+      "/:sessionID/aegis/control",
+      describeRoute({
+        summary: "Control Aegis supervisor",
+        description: "Pause or resume the Aegis supervisor for this session.",
+        operationId: "session.aegis_control",
+        responses: {
+          200: {
+            description: "Updated Aegis state",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.SessionState),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", Aegis.ControlInput.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        return c.json(await Aegis.control({ ...body, sessionID }))
+      },
+    )
+    .get(
+      "/:sessionID/aegis/events",
+      describeRoute({
+        summary: "Get Aegis events",
+        description: "Retrieve recent Aegis supervision events for a session.",
+        operationId: "session.aegis_events",
+        responses: {
+          200: {
+            description: "Aegis events",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.EventInfo.array()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator(
+        "query",
+        z.object({
+          limit: z.coerce.number().optional(),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const limit = c.req.valid("query").limit ?? 50
+        return c.json(await Aegis.events(sessionID, limit))
+      },
+    )
+    .post(
+      "/:sessionID/aegis/override",
+      describeRoute({
+        summary: "Create Aegis override",
+        description: "Create a persistent Aegis invariant override for this project or globally.",
+        operationId: "session.aegis_override",
+        responses: {
+          200: {
+            description: "Created rule",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.Rule),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", Aegis.OverrideInput.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        return c.json(await Aegis.override({ ...body, sessionID }))
+      },
+    )
+    .post(
+      "/:sessionID/aegis/feedback",
+      describeRoute({
+        summary: "Submit Aegis feedback",
+        description: "Submit feedback for an Aegis intervention event.",
+        operationId: "session.aegis_feedback",
+        responses: {
+          200: {
+            description: "Feedback result",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator("json", Aegis.FeedbackInput.omit({ sessionID: true })),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        return c.json(await Aegis.feedback({ ...body, sessionID }))
       },
     )
     .post(
