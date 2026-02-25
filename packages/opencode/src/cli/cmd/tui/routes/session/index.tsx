@@ -109,6 +109,17 @@ function use() {
   return ctx
 }
 
+function messageText(input: unknown) {
+  if (typeof input === "string") return input
+  return undefined
+}
+
+function messageSeverity(input: Record<string, unknown>) {
+  const value = input.severity
+  if (value === "low" || value === "medium" || value === "high") return value
+  return "medium"
+}
+
 export function Session() {
   const route = useRouteData("session")
   const { navigate } = useRoute()
@@ -124,6 +135,7 @@ export function Session() {
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
   const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+  const aegisEvents = createMemo(() => sync.data.aegis_event[route.sessionID] ?? [])
   const permissions = createMemo(() => {
     if (session()?.parentID) return []
     return children().flatMap((x) => sync.data.permission[x.id] ?? [])
@@ -141,6 +153,46 @@ export function Session() {
     return messages().findLast((x) => x.role === "assistant")
   })
 
+  const aegisNotices = createMemo(() => {
+    const result = new Map<
+      string,
+      {
+        id: string
+        severity: "low" | "medium" | "high"
+        summary: string
+        action?: string
+        type: "intervention_injected" | "violation" | "escalation"
+      }[]
+    >()
+    for (const event of aegisEvents()) {
+      if (event.type !== "intervention_injected" && event.type !== "violation" && event.type !== "escalation") continue
+      if (!event.message_id) continue
+      const payload = event.payload as Record<string, unknown>
+      const level = messageSeverity(payload)
+      if (event.type === "violation" && level !== "high") continue
+      const summary =
+        messageText(payload.statement) ??
+        messageText(payload.reason) ??
+        (event.type === "escalation" ? "Issue escalated by Aegis" : "Aegis intervention")
+      const action =
+        messageText(payload.instruction) ??
+        messageText(payload.action) ??
+        (event.type === "escalation" ? "Review unresolved issue and apply required correction." : undefined)
+      const list = result.get(event.message_id) ?? []
+      if (!list.some((item) => item.id === event.id)) {
+        list.push({
+          id: event.id,
+          severity: level,
+          summary,
+          action,
+          type: event.type,
+        })
+      }
+      result.set(event.message_id, list)
+    }
+    return result
+  })
+
   const dimensions = useTerminalDimensions()
   const [sidebar, setSidebar] = kv.signal<"auto" | "hide">("sidebar", "auto")
   const [sidebarOpen, setSidebarOpen] = createSignal(false)
@@ -151,6 +203,7 @@ export function Session() {
   const [showAssistantMetadata, setShowAssistantMetadata] = kv.signal("assistant_metadata_visibility", true)
   const [showScrollbar, setShowScrollbar] = kv.signal("scrollbar_visible", false)
   const [showHeader, setShowHeader] = kv.signal("header_visible", true)
+  const [showAegis, setShowAegis] = kv.signal("aegis_visible", true)
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
   const [animationsEnabled, setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [showGenericToolOutput, setShowGenericToolOutput] = kv.signal("generic_tool_output_visibility", false)
@@ -533,6 +586,15 @@ export function Session() {
           setSidebar(() => (isVisible ? "hide" : "auto"))
           setSidebarOpen(!isVisible)
         })
+        dialog.clear()
+      },
+    },
+    {
+      title: showAegis() ? "Hide Aegis quick status in sidebar" : "Show Aegis quick status in sidebar",
+      value: "session.aegis.sidebar.toggle",
+      category: "Session",
+      onSelect: (dialog) => {
+        setShowAegis((prev) => !prev)
         dialog.clear()
       },
     },
@@ -1016,97 +1078,121 @@ export function Session() {
             >
               <For each={messages()}>
                 {(message, index) => (
-                  <Switch>
-                    <Match when={message.id === revert()?.messageID}>
-                      {(function () {
-                        const command = useCommandDialog()
-                        const [hover, setHover] = createSignal(false)
-                        const dialog = useDialog()
+                  <>
+                    <Switch>
+                      <Match when={message.id === revert()?.messageID}>
+                        {(function () {
+                          const command = useCommandDialog()
+                          const [hover, setHover] = createSignal(false)
+                          const dialog = useDialog()
 
-                        const handleUnrevert = async () => {
-                          const confirmed = await DialogConfirm.show(
-                            dialog,
-                            "Confirm Redo",
-                            "Are you sure you want to restore the reverted messages?",
-                          )
-                          if (confirmed) {
-                            command.trigger("session.redo")
+                          const handleUnrevert = async () => {
+                            const confirmed = await DialogConfirm.show(
+                              dialog,
+                              "Confirm Redo",
+                              "Are you sure you want to restore the reverted messages?",
+                            )
+                            if (confirmed) {
+                              command.trigger("session.redo")
+                            }
                           }
-                        }
 
-                        return (
-                          <box
-                            onMouseOver={() => setHover(true)}
-                            onMouseOut={() => setHover(false)}
-                            onMouseUp={handleUnrevert}
-                            marginTop={1}
-                            flexShrink={0}
-                            border={["left"]}
-                            customBorderChars={SplitBorder.customBorderChars}
-                            borderColor={theme.backgroundPanel}
-                          >
+                          return (
                             <box
-                              paddingTop={1}
-                              paddingBottom={1}
-                              paddingLeft={2}
-                              backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+                              onMouseOver={() => setHover(true)}
+                              onMouseOut={() => setHover(false)}
+                              onMouseUp={handleUnrevert}
+                              marginTop={1}
+                              flexShrink={0}
+                              border={["left"]}
+                              customBorderChars={SplitBorder.customBorderChars}
+                              borderColor={theme.backgroundPanel}
                             >
-                              <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
-                              <text fg={theme.textMuted}>
-                                <span style={{ fg: theme.text }}>{keybind.print("messages_redo")}</span> or /redo to
-                                restore
-                              </text>
-                              <Show when={revert()!.diffFiles?.length}>
-                                <box marginTop={1}>
-                                  <For each={revert()!.diffFiles}>
-                                    {(file) => (
-                                      <text fg={theme.text}>
-                                        {file.filename}
-                                        <Show when={file.additions > 0}>
-                                          <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
-                                        </Show>
-                                        <Show when={file.deletions > 0}>
-                                          <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
-                                        </Show>
-                                      </text>
-                                    )}
-                                  </For>
-                                </box>
-                              </Show>
+                              <box
+                                paddingTop={1}
+                                paddingBottom={1}
+                                paddingLeft={2}
+                                backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+                              >
+                                <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
+                                <text fg={theme.textMuted}>
+                                  <span style={{ fg: theme.text }}>{keybind.print("messages_redo")}</span> or /redo to
+                                  restore
+                                </text>
+                                <Show when={revert()!.diffFiles?.length}>
+                                  <box marginTop={1}>
+                                    <For each={revert()!.diffFiles}>
+                                      {(file) => (
+                                        <text fg={theme.text}>
+                                          {file.filename}
+                                          <Show when={file.additions > 0}>
+                                            <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
+                                          </Show>
+                                          <Show when={file.deletions > 0}>
+                                            <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
+                                          </Show>
+                                        </text>
+                                      )}
+                                    </For>
+                                  </box>
+                                </Show>
+                              </box>
                             </box>
-                          </box>
-                        )
-                      })()}
-                    </Match>
-                    <Match when={revert()?.messageID && message.id >= revert()!.messageID}>
-                      <></>
-                    </Match>
-                    <Match when={message.role === "user"}>
-                      <UserMessage
-                        index={index()}
-                        onMouseUp={() => {
-                          if (renderer.getSelection()?.getSelectedText()) return
-                          dialog.replace(() => (
-                            <DialogMessage
-                              messageID={message.id}
-                              sessionID={route.sessionID}
-                              setPrompt={(promptInfo) => prompt.set(promptInfo)}
-                            />
-                          ))
-                        }}
-                        message={message as UserMessage}
-                        parts={sync.data.part[message.id] ?? []}
-                        pending={pending()}
-                      />
-                    </Match>
-                    <Match when={message.role === "assistant"}>
-                      <AssistantMessage
-                        last={lastAssistant()?.id === message.id}
-                        message={message as AssistantMessage}
-                        parts={sync.data.part[message.id] ?? []}
-                      />
-                    </Match>
-                  </Switch>
+                          )
+                        })()}
+                      </Match>
+                      <Match when={revert()?.messageID && message.id >= revert()!.messageID}>
+                        <></>
+                      </Match>
+                      <Match when={message.role === "user"}>
+                        <UserMessage
+                          index={index()}
+                          onMouseUp={() => {
+                            if (renderer.getSelection()?.getSelectedText()) return
+                            dialog.replace(() => (
+                              <DialogMessage
+                                messageID={message.id}
+                                sessionID={route.sessionID}
+                                setPrompt={(promptInfo) => prompt.set(promptInfo)}
+                              />
+                            ))
+                          }}
+                          message={message as UserMessage}
+                          parts={sync.data.part[message.id] ?? []}
+                          pending={pending()}
+                        />
+                      </Match>
+                      <Match when={message.role === "assistant"}>
+                        <AssistantMessage
+                          last={lastAssistant()?.id === message.id}
+                          message={message as AssistantMessage}
+                          parts={sync.data.part[message.id] ?? []}
+                        />
+                      </Match>
+                    </Switch>
+                    <Show when={!revert()?.messageID || message.id < revert()!.messageID}>
+                      <For each={aegisNotices().get(message.id) ?? []}>
+                        {(item) => (
+                          <AegisNotice
+                            severity={item.severity}
+                            summary={item.summary}
+                            action={item.action}
+                            onOpen={() =>
+                              navigate({
+                                type: "aegis",
+                                fromSessionID: route.sessionID,
+                                focus: {
+                                  panel: "interventions",
+                                  sessionID: route.sessionID,
+                                  eventID: item.id,
+                                },
+                              })
+                            }
+                          />
+                        )}
+                      </For>
+                    </Show>
+                  </>
                 )}
               </For>
             </scrollbox>
@@ -1140,7 +1226,7 @@ export function Session() {
         <Show when={sidebarVisible()}>
           <Switch>
             <Match when={wide()}>
-              <Sidebar sessionID={route.sessionID} />
+              <Sidebar sessionID={route.sessionID} showAegis={showAegis()} />
             </Match>
             <Match when={!wide()}>
               <box
@@ -1152,13 +1238,47 @@ export function Session() {
                 alignItems="flex-end"
                 backgroundColor={RGBA.fromInts(0, 0, 0, 70)}
               >
-                <Sidebar sessionID={route.sessionID} />
+                <Sidebar sessionID={route.sessionID} showAegis={showAegis()} />
               </box>
             </Match>
           </Switch>
         </Show>
       </box>
     </context.Provider>
+  )
+}
+
+function AegisNotice(props: {
+  severity: "low" | "medium" | "high"
+  summary: string
+  action?: string
+  onOpen: () => void
+}) {
+  const { theme } = useTheme()
+  const [hover, setHover] = createSignal(false)
+  const color = createMemo(() => {
+    if (props.severity === "high") return theme.error
+    if (props.severity === "low") return theme.success
+    return theme.warning
+  })
+  return (
+    <box marginTop={1} border={["left"]} borderColor={color()} customBorderChars={SplitBorder.customBorderChars}>
+      <box
+        onMouseOver={() => setHover(true)}
+        onMouseOut={() => setHover(false)}
+        onMouseUp={props.onOpen}
+        paddingTop={1}
+        paddingBottom={1}
+        paddingLeft={2}
+        backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+        flexShrink={0}
+      >
+        <text fg={color()} wrapMode="word">
+          Aegis · {props.severity.toUpperCase()} · {props.summary}
+          <Show when={props.action}>{" · Action: " + props.action}</Show>
+        </text>
+      </box>
+    </box>
   )
 }
 

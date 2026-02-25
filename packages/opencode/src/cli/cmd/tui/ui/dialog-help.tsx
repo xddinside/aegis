@@ -29,6 +29,9 @@ export function DialogHelp() {
         <text fg={theme.textMuted}>
           Press {keybind.print("command_list")} to see all available actions and commands in any context.
         </text>
+        <text fg={theme.textMuted}>
+          Press {keybind.print("aegis_view_toggle")} or run /aegis to open the Aegis supervisor workspace.
+        </text>
       </box>
       <box flexDirection="row" justifyContent="flex-end" paddingBottom={1}>
         <box paddingLeft={3} paddingRight={3} backgroundColor={theme.primary} onMouseUp={() => dialog.clear()}>

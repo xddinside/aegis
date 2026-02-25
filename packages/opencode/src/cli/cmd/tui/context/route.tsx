@@ -13,7 +13,18 @@ export type SessionRoute = {
   initialPrompt?: PromptInfo
 }
 
-export type Route = HomeRoute | SessionRoute
+export type AegisRoute = {
+  type: "aegis"
+  fromSessionID?: string
+  focus?: {
+    panel?: "overview" | "rules" | "interventions" | "sessions"
+    sessionID?: string
+    eventID?: string
+    ruleID?: string
+  }
+}
+
+export type Route = HomeRoute | SessionRoute | AegisRoute
 
 export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
   name: "Route",

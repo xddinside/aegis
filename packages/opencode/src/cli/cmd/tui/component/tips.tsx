@@ -71,6 +71,7 @@ const TIPS = [
   "The leader key is {highlight}Ctrl+X{/highlight}; combine with other keys for quick actions",
   "Press {highlight}F2{/highlight} to quickly switch between recently used models",
   "Press {highlight}Ctrl+X B{/highlight} to show/hide the sidebar panel",
+  "Press {highlight}Ctrl+X J{/highlight} or {highlight}/aegis{/highlight} to open the Aegis fullscreen supervisor view",
   "Use {highlight}PageUp{/highlight}/{highlight}PageDown{/highlight} to navigate through conversation history",
   "Press {highlight}Ctrl+G{/highlight} or {highlight}Home{/highlight} to jump to the beginning of the conversation",
   "Press {highlight}Ctrl+Alt+G{/highlight} or {highlight}End{/highlight} to jump to the most recent message",

@@ -12,19 +12,23 @@ import { useDirectory } from "../../context/directory"
 import { useKV } from "../../context/kv"
 import { TodoItem } from "../../component/todo-item"
 
-export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
+export function Sidebar(props: { sessionID: string; overlay?: boolean; showAegis?: boolean }) {
   const sync = useSync()
+  const keybind = useKeybind()
   const { theme } = useTheme()
   const session = createMemo(() => sync.session.get(props.sessionID)!)
   const diff = createMemo(() => sync.data.session_diff[props.sessionID] ?? [])
   const todo = createMemo(() => sync.data.todo[props.sessionID] ?? [])
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
+  const aegisState = createMemo(() => sync.data.aegis_state[props.sessionID])
+  const aegisEvents = createMemo(() => sync.data.aegis_event[props.sessionID] ?? [])
 
   const [expanded, setExpanded] = createStore({
     mcp: true,
     diff: true,
     todo: true,
     lsp: true,
+    aegis: true,
   })
 
   // Sort MCP servers alphabetically for consistent display order
@@ -263,6 +267,77 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                       )
                     }}
                   </For>
+                </Show>
+              </box>
+            </Show>
+            <Show when={props.showAegis !== false && (aegisState() || aegisEvents().length > 0)}>
+              <box>
+                <box
+                  flexDirection="row"
+                  gap={1}
+                  onMouseDown={() => (aegisEvents().length > 2 || !!aegisState()) && setExpanded("aegis", !expanded.aegis)}
+                >
+                  <Show when={aegisEvents().length > 2 || !!aegisState()}>
+                    <text fg={theme.text}>{expanded.aegis ? "▼" : "▶"}</text>
+                  </Show>
+                  <text fg={theme.text}>
+                    <b>Aegis</b>
+                    <Show when={!expanded.aegis && aegisEvents().length > 0}>
+                      <span style={{ fg: theme.textMuted }}> ({aegisEvents().length} events)</span>
+                    </Show>
+                  </text>
+                </box>
+                <Show when={expanded.aegis}>
+                  <Show when={aegisState()}>
+                    {(info) => (
+                      <box>
+                        <text fg={theme.textMuted}>
+                          Mode {info().mode ?? "advisory"} ({info().status ?? "running"})
+                        </text>
+                        <Show when={info().model}>
+                          {(model) => <text fg={theme.textMuted}>Model {model()}</text>}
+                        </Show>
+                        <text fg={theme.textMuted}>
+                          Rules {info().rules.active} active ({info().rules.project} project, {info().rules.global} global)
+                        </text>
+                        <text fg={theme.textMuted}>
+                          Checks {info().checks ?? 0} · Queue {info().queue} · Unresolved {info().unresolved ?? 0}
+                        </text>
+                        <text fg={theme.textMuted}>
+                          Tokens in/out {info().tokens?.input ?? 0}/{info().tokens?.output ?? 0}
+                        </text>
+                        <text fg={theme.textMuted}>Interventions {info().interventions}</text>
+                        <text fg={theme.textMuted}>Mining {info().mining.status}</text>
+                        <Show when={info().last_violation}>
+                          {(last) => (
+                            <text fg={theme.warning} wrapMode="word">
+                              Last violation ({last().severity ?? "medium"}, {last().source ?? "supervisor"}):{" "}
+                              {last().statement}
+                            </text>
+                          )}
+                        </Show>
+                        <Show when={info().last_intervention}>
+                          {(last) => (
+                            <text fg={theme.warning} wrapMode="word">
+                              Last intervention L{last().level ?? 1} ({last().severity ?? "medium"})
+                            </text>
+                          )}
+                        </Show>
+                      </box>
+                    )}
+                  </Show>
+                  <Show when={aegisEvents().length === 0}>
+                    <text fg={theme.textMuted}>Aegis has not recorded events in this session.</text>
+                  </Show>
+                  <For each={aegisEvents().slice(-5)}>
+                    {(item) => (
+                      <text fg={theme.textMuted} wrapMode="word">
+                        {Locale.time(item.time.created)} {item.type}
+                        {typeof item.payload.statement === "string" ? ` · ${item.payload.statement}` : ""}
+                      </text>
+                    )}
+                  </For>
+                  <text fg={theme.textMuted}>Full view: {keybind.print("aegis_view_toggle")} or /aegis</text>
                 </Show>
               </box>
             </Show>

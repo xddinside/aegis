@@ -54,6 +54,78 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session_diff: {
         [sessionID: string]: Snapshot.FileDiff[]
       }
+      aegis_state: {
+        [sessionID: string]: {
+          session_id: string
+          mode?: "advisory"
+          status?: "running" | "paused"
+          queue: number
+          checks?: number
+          unresolved?: number
+          model?: string
+          tokens?: {
+            input?: number
+            output?: number
+          }
+          interventions: number
+          rules: {
+            global: number
+            project: number
+            active: number
+          }
+          mining: {
+            status: "idle" | "running" | "done"
+            last_run?: number
+          }
+          last_violation?: {
+            rule_id?: string
+            statement: string
+            severity?: "low" | "medium" | "high"
+            time: number
+            source?: "deterministic" | "supervisor"
+            kind?: string
+          }
+          last_intervention?: {
+            rule_id?: string
+            fingerprint?: string
+            severity?: "low" | "medium" | "high"
+            level?: number
+            time: number
+          }
+        }
+      }
+      aegis_event: {
+        [sessionID: string]: {
+          id: string
+          session_id: string
+          message_id?: string
+          part_id?: string
+          rule_id?: string
+          type:
+            | "observe"
+            | "observe_tool_call"
+            | "observe_tool_result"
+            | "observe_text"
+            | "observe_patch"
+            | "check_started"
+            | "check_completed"
+            | "violation"
+            | "intervention"
+            | "intervention_injected"
+            | "issue_unresolved"
+            | "issue_resolved"
+            | "escalation"
+            | "override"
+            | "feedback"
+            | "bootstrap"
+            | "memory"
+          payload: Record<string, unknown>
+          time: {
+            created: number
+            updated: number
+          }
+        }[]
+      }
       todo: {
         [sessionID: string]: Todo[]
       }
@@ -91,6 +163,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session: [],
       session_status: {},
       session_diff: {},
+      aegis_state: {},
+      aegis_event: {},
       todo: {},
       message: {},
       part: {},
@@ -222,6 +296,28 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
         case "session.status": {
           setStore("session_status", event.properties.sessionID, event.properties.status)
+          break
+        }
+
+        case "aegis.state.updated": {
+          setStore("aegis_state", event.properties.sessionID, event.properties.state)
+          break
+        }
+
+        case "aegis.event.created": {
+          const events = store.aegis_event[event.properties.sessionID]
+          if (!events) {
+            setStore("aegis_event", event.properties.sessionID, [event.properties.event])
+            break
+          }
+          setStore(
+            "aegis_event",
+            event.properties.sessionID,
+            produce((draft) => {
+              draft.push(event.properties.event)
+              if (draft.length > 100) draft.splice(0, draft.length - 100)
+            }),
+          )
           break
         }
 
@@ -459,11 +555,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         },
         async sync(sessionID: string) {
           if (fullSyncedSessions.has(sessionID)) return
-          const [session, messages, todo, diff] = await Promise.all([
+          const [session, messages, todo, diff, aegis] = await Promise.all([
             sdk.client.session.get({ sessionID }, { throwOnError: true }),
             sdk.client.session.messages({ sessionID, limit: 100 }),
             sdk.client.session.todo({ sessionID }),
             sdk.client.session.diff({ sessionID }),
+            sdk.client.session.aegis({ sessionID }),
           ])
           setStore(
             produce((draft) => {
@@ -476,6 +573,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 draft.part[message.info.id] = message.parts
               }
               draft.session_diff[sessionID] = diff.data ?? []
+              draft.aegis_state[sessionID] = aegis.data?.state ?? draft.aegis_state[sessionID]
+              draft.aegis_event[sessionID] = aegis.data?.events ?? draft.aegis_event[sessionID] ?? []
             }),
           )
           fullSyncedSessions.add(sessionID)

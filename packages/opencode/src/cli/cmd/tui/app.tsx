@@ -24,6 +24,7 @@ import { KeybindProvider } from "@tui/context/keybind"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
+import { Aegis } from "@tui/routes/aegis"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -265,6 +266,11 @@ function App() {
       return
     }
 
+    if (route.data.type === "aegis") {
+      renderer.setTerminalTitle("OC | Aegis")
+      return
+    }
+
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || SessionApi.isDefaultTitle(session.title)) {
@@ -353,6 +359,25 @@ function App() {
   )
 
   const connected = useConnected()
+  const toggleAegis = () => {
+    if (route.data.type === "aegis") {
+      if (route.data.fromSessionID) {
+        route.navigate({
+          type: "session",
+          sessionID: route.data.fromSessionID,
+        })
+        return
+      }
+      route.navigate({ type: "home" })
+      return
+    }
+
+    route.navigate({
+      type: "aegis",
+      fromSessionID: route.data.type === "session" ? route.data.sessionID : undefined,
+    })
+  }
+
   command.register(() => [
     {
       title: "Switch session",
@@ -386,6 +411,30 @@ function App() {
           type: "home",
           initialPrompt: currentPrompt,
         })
+        dialog.clear()
+      },
+    },
+    {
+      title: route.data.type === "aegis" ? "Return from Aegis" : "Open Aegis workspace",
+      value: "aegis.view.toggle",
+      keybind: "aegis_view_toggle",
+      category: "Aegis",
+      slash: {
+        name: "aegis",
+      },
+      onSelect: (dialog) => {
+        toggleAegis()
+        dialog.clear()
+      },
+    },
+    {
+      title: "Open Aegis workspace (legacy keybind)",
+      value: "aegis.view.toggle.legacy",
+      keybind: "aegis_toggle",
+      category: "Aegis",
+      hidden: true,
+      onSelect: (dialog) => {
+        toggleAegis()
         dialog.clear()
       },
     },
@@ -695,6 +744,15 @@ function App() {
         variant: "info",
         message: "The current session was deleted",
       })
+      return
+    }
+
+    if (route.data.type === "aegis" && route.data.fromSessionID === evt.properties.info.id) {
+      route.navigate({ type: "home" })
+      toast.show({
+        variant: "info",
+        message: "The source session for this Aegis view was deleted",
+      })
     }
   })
 
@@ -747,6 +805,9 @@ function App() {
       <Switch>
         <Match when={route.data.type === "home"}>
           <Home />
+        </Match>
+        <Match when={route.data.type === "aegis"}>
+          <Aegis />
         </Match>
         <Match when={route.data.type === "session"}>
           <Session />
