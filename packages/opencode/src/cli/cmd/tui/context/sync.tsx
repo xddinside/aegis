@@ -117,6 +117,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             | "escalation"
             | "override"
             | "feedback"
+            | "rule_updated"
+            | "rule_deleted"
             | "bootstrap"
             | "memory"
           payload: Record<string, unknown>

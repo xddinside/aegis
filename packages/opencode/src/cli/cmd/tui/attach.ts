@@ -5,7 +5,7 @@ import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./win32"
 
 export const AttachCommand = cmd({
   command: "attach <url>",
-  describe: "attach to a running opencode server",
+  describe: "attach to a running Aegis server",
   builder: (yargs) =>
     yargs
       .positional("url", {
@@ -34,7 +34,7 @@ export const AttachCommand = cmd({
       .option("password", {
         alias: ["p"],
         type: "string",
-        describe: "basic auth password (defaults to OPENCODE_SERVER_PASSWORD)",
+        describe: "basic auth password (defaults to AEGIS_SERVER_PASSWORD)",
       }),
   handler: async (args) => {
     const unguard = win32InstallCtrlCGuard()
@@ -58,9 +58,9 @@ export const AttachCommand = cmd({
         }
       })()
       const headers = (() => {
-        const password = args.password ?? process.env.OPENCODE_SERVER_PASSWORD
+        const password = args.password ?? process.env.AEGIS_SERVER_PASSWORD
         if (!password) return undefined
-        const auth = `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`
+        const auth = `Basic ${Buffer.from(`aegis:${password}`).toString("base64")}`
         return { Authorization: auth }
       })()
       await tui({

@@ -45,15 +45,15 @@ export namespace Config {
   function getManagedConfigDir(): string {
     switch (process.platform) {
       case "darwin":
-        return "/Library/Application Support/opencode"
+        return "/Library/Application Support/aegis"
       case "win32":
-        return path.join(process.env.ProgramData || "C:\\ProgramData", "opencode")
+        return path.join(process.env.ProgramData || "C:\\ProgramData", "aegis")
       default:
-        return "/etc/opencode"
+        return "/etc/aegis"
     }
   }
 
-  const managedConfigDir = process.env.OPENCODE_TEST_MANAGED_CONFIG_DIR || getManagedConfigDir()
+  const managedConfigDir = process.env.AEGIS_TEST_MANAGED_CONFIG_DIR || getManagedConfigDir()
 
   // Custom merge function that concatenates array fields instead of replacing them
   function merge(target: Info, source: Info): Info {
@@ -71,19 +71,19 @@ export namespace Config {
     const auth = await Auth.all()
 
     // Config loading order (low -> high precedence): https://opencode.ai/docs/config#precedence-order
-    // 1) Remote .well-known/opencode (org defaults)
-    // 2) Global config (~/.config/opencode/opencode.json{,c})
-    // 3) Custom config (OPENCODE_CONFIG)
-    // 4) Project config (opencode.json{,c})
-    // 5) .opencode directories (.opencode/agents/, .opencode/commands/, .opencode/plugins/, .opencode/opencode.json{,c})
-    // 6) Inline config (OPENCODE_CONFIG_CONTENT)
+    // 1) Remote .well-known/aegis (org defaults)
+    // 2) Global config (~/.config/aegis/aegis.json{,c})
+    // 3) Custom config (AEGIS_CONFIG)
+    // 4) Project config (aegis.json{,c})
+    // 5) .aegis directories (.aegis/agents/, .aegis/commands/, .aegis/plugins/, .aegis/aegis.json{,c})
+    // 6) Inline config (AEGIS_CONFIG_CONTENT)
     // Managed config directory is enterprise-only and always overrides everything above.
     let result: Info = {}
     for (const [key, value] of Object.entries(auth)) {
       if (value.type === "wellknown") {
         process.env[value.key] = value.token
-        log.debug("fetching remote config", { url: `${key}/.well-known/opencode` })
-        const response = await fetch(`${key}/.well-known/opencode`)
+        log.debug("fetching remote config", { url: `${key}/.well-known/aegis` })
+        const response = await fetch(`${key}/.well-known/aegis`)
         if (!response.ok) {
           throw new Error(`failed to fetch remote config from ${key}: ${response.status}`)
         }
@@ -94,8 +94,8 @@ export namespace Config {
         result = merge(
           result,
           await load(JSON.stringify(remoteConfig), {
-            dir: path.dirname(`${key}/.well-known/opencode`),
-            source: `${key}/.well-known/opencode`,
+            dir: path.dirname(`${key}/.well-known/aegis`),
+            source: `${key}/.well-known/aegis`,
           }),
         )
         log.debug("loaded remote config from well-known", { url: key })
@@ -110,14 +110,14 @@ export namespace Config {
     result = merge(result, await global())
 
     // Custom config path overrides global config.
-    if (Flag.OPENCODE_CONFIG) {
-      result = merge(result, await loadFile(Flag.OPENCODE_CONFIG))
-      log.debug("loaded custom config", { path: Flag.OPENCODE_CONFIG })
+    if (Flag.AEGIS_CONFIG) {
+      result = merge(result, await loadFile(Flag.AEGIS_CONFIG))
+      log.debug("loaded custom config", { path: Flag.AEGIS_CONFIG })
     }
 
     // Project config overrides global and remote config.
-    if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-      for (const file of ["opencode.jsonc", "opencode.json"]) {
+    if (!Flag.AEGIS_DISABLE_PROJECT_CONFIG) {
+      for (const file of ["aegis.jsonc", "aegis.json"]) {
         const found = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
         for (const resolved of found.toReversed()) {
           result = merge(result, await loadFile(resolved))
@@ -131,37 +131,37 @@ export namespace Config {
 
     const directories = [
       Global.Path.config,
-      // Only scan project .opencode/ directories when project discovery is enabled
-      ...(!Flag.OPENCODE_DISABLE_PROJECT_CONFIG
+      // Only scan project .aegis/ directories when project discovery is enabled
+      ...(!Flag.AEGIS_DISABLE_PROJECT_CONFIG
         ? await Array.fromAsync(
             Filesystem.up({
-              targets: [".opencode"],
+              targets: [".aegis"],
               start: Instance.directory,
               stop: Instance.worktree,
             }),
           )
         : []),
-      // Always scan ~/.opencode/ (user home directory)
+      // Always scan ~/.aegis/ (user home directory)
       ...(await Array.fromAsync(
         Filesystem.up({
-          targets: [".opencode"],
+          targets: [".aegis"],
           start: Global.Path.home,
           stop: Global.Path.home,
         }),
       )),
     ]
 
-    // .opencode directory config overrides (project and global) config sources.
-    if (Flag.OPENCODE_CONFIG_DIR) {
-      directories.push(Flag.OPENCODE_CONFIG_DIR)
-      log.debug("loading config from OPENCODE_CONFIG_DIR", { path: Flag.OPENCODE_CONFIG_DIR })
+    // .aegis directory config overrides (project and global) config sources.
+    if (Flag.AEGIS_CONFIG_DIR) {
+      directories.push(Flag.AEGIS_CONFIG_DIR)
+      log.debug("loading config from AEGIS_CONFIG_DIR", { path: Flag.AEGIS_CONFIG_DIR })
     }
 
     const deps = []
 
     for (const dir of unique(directories)) {
-      if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
-        for (const file of ["opencode.jsonc", "opencode.json"]) {
+      if (dir.endsWith(".aegis") || dir === Flag.AEGIS_CONFIG_DIR) {
+        for (const file of ["aegis.jsonc", "aegis.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = merge(result, await loadFile(path.join(dir, file)))
           // to satisfy the type checker
@@ -185,15 +185,15 @@ export namespace Config {
     }
 
     // Inline config content overrides all non-managed config sources.
-    if (process.env.OPENCODE_CONFIG_CONTENT) {
+    if (process.env.AEGIS_CONFIG_CONTENT) {
       result = merge(
         result,
-        await load(process.env.OPENCODE_CONFIG_CONTENT, {
+        await load(process.env.AEGIS_CONFIG_CONTENT, {
           dir: Instance.directory,
-          source: "OPENCODE_CONFIG_CONTENT",
+          source: "AEGIS_CONFIG_CONTENT",
         }),
       )
-      log.debug("loaded custom config from OPENCODE_CONFIG_CONTENT")
+      log.debug("loaded custom config from AEGIS_CONFIG_CONTENT")
     }
 
     // Load managed config files last (highest priority) - enterprise admin-controlled
@@ -201,7 +201,7 @@ export namespace Config {
     // which would fail on system directories requiring elevated permissions
     // This way it only loads config file and not skills/plugins/commands
     if (existsSync(managedConfigDir)) {
-      for (const file of ["opencode.jsonc", "opencode.json"]) {
+      for (const file of ["aegis.jsonc", "aegis.json"]) {
         result = merge(result, await loadFile(path.join(managedConfigDir, file)))
       }
     }
@@ -216,8 +216,8 @@ export namespace Config {
       })
     }
 
-    if (Flag.OPENCODE_PERMISSION) {
-      result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.OPENCODE_PERMISSION))
+    if (Flag.AEGIS_PERMISSION) {
+      result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.AEGIS_PERMISSION))
     }
 
     // Backwards compatibility: legacy top-level `tools` config
@@ -252,10 +252,10 @@ export namespace Config {
     }
 
     // Apply flag overrides for compaction settings
-    if (Flag.OPENCODE_DISABLE_AUTOCOMPACT) {
+    if (Flag.AEGIS_DISABLE_AUTOCOMPACT) {
       result.compaction = { ...result.compaction, auto: false }
     }
-    if (Flag.OPENCODE_DISABLE_PRUNE) {
+    if (Flag.AEGIS_DISABLE_PRUNE) {
       result.compaction = { ...result.compaction, prune: false }
     }
 
@@ -382,7 +382,7 @@ export namespace Config {
       })
       if (!md) continue
 
-      const patterns = ["/.opencode/command/", "/.opencode/commands/", "/command/", "/commands/"]
+      const patterns = ["/.aegis/command/", "/.aegis/commands/", "/command/", "/commands/"]
       const file = rel(item, patterns) ?? path.basename(item)
       const name = trim(file)
 
@@ -421,7 +421,7 @@ export namespace Config {
       })
       if (!md) continue
 
-      const patterns = ["/.opencode/agent/", "/.opencode/agents/", "/agent/", "/agents/"]
+      const patterns = ["/.aegis/agent/", "/.aegis/agents/", "/agent/", "/agents/"]
       const file = rel(item, patterns) ?? path.basename(item)
       const agentName = trim(file)
 
@@ -515,9 +515,9 @@ export namespace Config {
    * Deduplicates plugins by name, with later entries (higher priority) winning.
    * Priority order (highest to lowest):
    * 1. Local plugin/ directory
-   * 2. Local opencode.json
+   * 2. Local aegis.json
    * 3. Global plugin/ directory
-   * 4. Global opencode.json
+   * 4. Global aegis.json
    *
    * Since plugins are added in low-to-high priority order,
    * we reverse, deduplicate (keeping first occurrence), then restore order.
@@ -713,6 +713,19 @@ export namespace Config {
     })
   export type AegisEscalation = z.infer<typeof AegisEscalation>
 
+  export const AegisIntervention = z
+    .object({
+      base_holdoff_ms: z.number().int().positive().optional().default(90_000),
+      progress_extend_ms: z.number().int().positive().optional().default(45_000),
+      max_holdoff_ms: z.number().int().positive().optional().default(300_000),
+      stall_timeout_ms: z.number().int().positive().optional().default(120_000),
+      contradiction_bypass: z.boolean().optional().default(true),
+    })
+    .meta({
+      ref: "AegisInterventionConfig",
+    })
+  export type AegisIntervention = z.infer<typeof AegisIntervention>
+
   export const Aegis = z
     .object({
       enabled: z.boolean().optional().default(true),
@@ -728,6 +741,13 @@ export namespace Config {
       escalation: AegisEscalation.optional().default(() => ({
         warning_after: 2,
         critical_after: 4,
+      })),
+      intervention: AegisIntervention.optional().default(() => ({
+        base_holdoff_ms: 90_000,
+        progress_extend_ms: 45_000,
+        max_holdoff_ms: 300_000,
+        stall_timeout_ms: 120_000,
+        contradiction_bypass: true,
       })),
     })
     .meta({
@@ -1003,7 +1023,7 @@ export namespace Config {
       port: z.number().int().positive().optional().describe("Port to listen on"),
       hostname: z.string().optional().describe("Hostname to listen on"),
       mdns: z.boolean().optional().describe("Enable mDNS service discovery"),
-      mdnsDomain: z.string().optional().describe("Custom domain name for mDNS service (default: opencode.local)"),
+      mdnsDomain: z.string().optional().describe("Custom domain name for mDNS service (default: aegis.local)"),
       cors: z.array(z.string()).optional().describe("Additional domains to allow for CORS"),
     })
     .strict()
@@ -1076,11 +1096,8 @@ export namespace Config {
       keybinds: Keybinds.optional().describe("Custom keybind configurations"),
       logLevel: Log.Level.optional().describe("Log level"),
       tui: TUI.optional().describe("TUI specific settings"),
-      server: Server.optional().describe("Server configuration for opencode serve and web commands"),
-      command: z
-        .record(z.string(), Command)
-        .optional()
-        .describe("Command configuration, see https://opencode.ai/docs/commands"),
+      server: Server.optional().describe("Server configuration for aegis serve and web commands"),
+      command: z.record(z.string(), Command).optional().describe("Command configuration"),
       skills: Skills.optional().describe("Additional skill folder paths"),
       watcher: z
         .object({
@@ -1147,7 +1164,7 @@ export namespace Config {
         })
         .catchall(Agent)
         .optional()
-        .describe("Agent configuration, see https://opencode.ai/docs/agents"),
+        .describe("Agent configuration"),
       aegis: Aegis.optional().describe("Aegis supervisor configuration"),
       provider: z
         .record(z.string(), Provider)
@@ -1270,9 +1287,8 @@ export namespace Config {
   export const global = lazy(async () => {
     let result: Info = pipe(
       {},
-      mergeDeep(await loadFile(path.join(Global.Path.config, "config.json"))),
-      mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.json"))),
-      mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.jsonc"))),
+      mergeDeep(await loadFile(path.join(Global.Path.config, "aegis.json"))),
+      mergeDeep(await loadFile(path.join(Global.Path.config, "aegis.jsonc"))),
     )
 
     const legacy = path.join(Global.Path.config, "config")
@@ -1287,7 +1303,7 @@ export namespace Config {
           if (provider && model) result.model = `${provider}/${model}`
           result["$schema"] = "https://opencode.ai/config.json"
           result = mergeDeep(result, rest)
-          await Filesystem.writeJson(path.join(Global.Path.config, "config.json"), result)
+          await Filesystem.writeJson(path.join(Global.Path.config, "aegis.json"), result)
           await fs.unlink(legacy)
         })
         .catch(() => {})
@@ -1443,16 +1459,14 @@ export namespace Config {
   }
 
   export async function update(config: Info) {
-    const filepath = path.join(Instance.directory, "config.json")
+    const filepath = path.join(Instance.directory, "aegis.json")
     const existing = await loadFile(filepath)
     await Filesystem.writeJson(filepath, mergeDeep(existing, config))
     await Instance.dispose()
   }
 
   function globalConfigFile() {
-    const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((file) =>
-      path.join(Global.Path.config, file),
-    )
+    const candidates = ["aegis.jsonc", "aegis.json"].map((file) => path.join(Global.Path.config, file))
     for (const file of candidates) {
       if (existsSync(file)) return file
     }

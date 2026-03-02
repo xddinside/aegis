@@ -100,7 +100,7 @@ export namespace Project {
         const gitBinary = Bun.which("git")
 
         // cached id calculation
-        let id = await Filesystem.readText(path.join(dotgit, "opencode"))
+        let id = await Filesystem.readText(path.join(dotgit, "aegis"))
           .then((x) => x.trim())
           .catch(() => undefined)
 
@@ -109,7 +109,7 @@ export namespace Project {
             id: id ?? "global",
             worktree: sandbox,
             sandbox: sandbox,
-            vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
+            vcs: Info.shape.vcs.parse(Flag.AEGIS_FAKE_VCS),
           }
         }
 
@@ -132,13 +132,13 @@ export namespace Project {
               id: "global",
               worktree: sandbox,
               sandbox: sandbox,
-              vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
+              vcs: Info.shape.vcs.parse(Flag.AEGIS_FAKE_VCS),
             }
           }
 
           id = roots[0]
           if (id) {
-            void Filesystem.write(path.join(dotgit, "opencode"), id).catch(() => undefined)
+            void Filesystem.write(path.join(dotgit, "aegis"), id).catch(() => undefined)
           }
         }
 
@@ -162,7 +162,7 @@ export namespace Project {
             id,
             sandbox,
             worktree: sandbox,
-            vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
+            vcs: Info.shape.vcs.parse(Flag.AEGIS_FAKE_VCS),
           }
         }
 
@@ -183,7 +183,7 @@ export namespace Project {
             id,
             sandbox,
             worktree: sandbox,
-            vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
+            vcs: Info.shape.vcs.parse(Flag.AEGIS_FAKE_VCS),
           }
         }
 
@@ -199,7 +199,7 @@ export namespace Project {
         id: "global",
         worktree: "/",
         sandbox: "/",
-        vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
+        vcs: Info.shape.vcs.parse(Flag.AEGIS_FAKE_VCS),
       }
     })
 
@@ -222,7 +222,7 @@ export namespace Project {
       return fresh
     })
 
-    if (Flag.OPENCODE_EXPERIMENTAL_ICON_DISCOVERY) discover(existing)
+    if (Flag.AEGIS_EXPERIMENTAL_ICON_DISCOVERY) discover(existing)
 
     const result: Info = {
       ...existing,

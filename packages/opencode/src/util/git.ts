@@ -17,7 +17,7 @@ export interface GitResult {
  * case we fall back to `Bun.spawn` with `stdin: "ignore"`.
  */
 export async function git(args: string[], opts: { cwd: string; env?: Record<string, string> }): Promise<GitResult> {
-  if (Flag.OPENCODE_CLIENT === "acp") {
+  if (Flag.AEGIS_CLIENT === "acp") {
     try {
       const proc = Bun.spawn(["git", ...args], {
         stdin: "ignore",

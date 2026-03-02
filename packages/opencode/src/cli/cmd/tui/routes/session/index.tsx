@@ -157,6 +157,7 @@ export function Session() {
     const result = new Map<
       string,
       {
+        key: string
         id: string
         severity: "low" | "medium" | "high"
         summary: string
@@ -164,6 +165,16 @@ export function Session() {
         type: "intervention_injected" | "violation" | "escalation"
       }[]
     >()
+    const severity = {
+      low: 1,
+      medium: 2,
+      high: 3,
+    } as const
+    const priority = {
+      violation: 1,
+      escalation: 2,
+      intervention_injected: 3,
+    } as const
     for (const event of aegisEvents()) {
       if (event.type !== "intervention_injected" && event.type !== "violation" && event.type !== "escalation") continue
       if (!event.message_id) continue
@@ -179,15 +190,35 @@ export function Session() {
         messageText(payload.action) ??
         (event.type === "escalation" ? "Review unresolved issue and apply required correction." : undefined)
       const list = result.get(event.message_id) ?? []
-      if (!list.some((item) => item.id === event.id)) {
+      const fingerprint = messageText(payload.fingerprint)
+      const key = fingerprint ?? `${event.type}:${summary}`
+      const index = list.findIndex((item) => item.key === key)
+      if (index === -1) {
         list.push({
+          key,
           id: event.id,
           severity: level,
           summary,
           action,
           type: event.type,
         })
+      } else {
+        const prev = list[index]!
+        const pick = priority[event.type] >= priority[prev.type]
+        list[index] = {
+          key,
+          id: pick ? event.id : prev.id,
+          severity: severity[level] >= severity[prev.severity] ? level : prev.severity,
+          summary: pick ? summary : prev.summary,
+          action: prev.action ?? action,
+          type: pick ? event.type : prev.type,
+        }
       }
+      list.sort((a, b) => {
+        const sev = severity[b.severity] - severity[a.severity]
+        if (sev !== 0) return sev
+        return priority[b.type] - priority[a.type]
+      })
       result.set(event.message_id, list)
     }
     return result
@@ -294,7 +325,7 @@ export function Session() {
         `${logo[3] ?? ""}`,
         ``,
         `  ${weak("Session")}${UI.Style.TEXT_NORMAL_BOLD}${title}${UI.Style.TEXT_NORMAL}`,
-        `  ${weak("Continue")}${UI.Style.TEXT_NORMAL_BOLD}opencode -s ${session()?.id}${UI.Style.TEXT_NORMAL}`,
+        `  ${weak("Continue")}${UI.Style.TEXT_NORMAL_BOLD}aegis -s ${session()?.id}${UI.Style.TEXT_NORMAL}`,
         ``,
       ].join("\n"),
     )
@@ -1514,7 +1545,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
     <Show when={props.part.text.trim()}>
       <box id={"text-" + props.part.id} paddingLeft={3} marginTop={1} flexShrink={0}>
         <Switch>
-          <Match when={Flag.OPENCODE_EXPERIMENTAL_MARKDOWN}>
+          <Match when={Flag.AEGIS_EXPERIMENTAL_MARKDOWN}>
             <markdown
               syntaxStyle={syntax()}
               streaming={true}
@@ -1522,7 +1553,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
               conceal={ctx.conceal()}
             />
           </Match>
-          <Match when={!Flag.OPENCODE_EXPERIMENTAL_MARKDOWN}>
+          <Match when={!Flag.AEGIS_EXPERIMENTAL_MARKDOWN}>
             <code
               filetype="markdown"
               drawUnstyledText={false}

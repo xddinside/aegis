@@ -6,6 +6,7 @@ import type {
   AegisMatcher,
   AegisRuleScope,
   AegisRuleSeverity,
+  AegisThreadStatus,
   AgentPartInput,
   AppAgentsResponses,
   AppLogErrors,
@@ -112,13 +113,23 @@ import type {
   SessionAegisFeedbackResponses,
   SessionAegisMetricsErrors,
   SessionAegisMetricsResponses,
+  SessionAegisOverrideDryRunErrors,
+  SessionAegisOverrideDryRunResponses,
   SessionAegisOverrideErrors,
   SessionAegisOverrideResponses,
   SessionAegisResponses,
+  SessionAegisRuleDeleteErrors,
+  SessionAegisRuleDeleteResponses,
+  SessionAegisRuleDryRunErrors,
+  SessionAegisRuleDryRunResponses,
+  SessionAegisRuleUpdateErrors,
+  SessionAegisRuleUpdateResponses,
   SessionAegisWorkspaceErrors,
   SessionAegisWorkspaceEventsErrors,
   SessionAegisWorkspaceEventsResponses,
   SessionAegisWorkspaceResponses,
+  SessionAegisWorkspaceThreadsErrors,
+  SessionAegisWorkspaceThreadsResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
@@ -1159,6 +1170,52 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
+   * Get Aegis workspace threads
+   *
+   * Retrieve grouped workspace threads keyed by fingerprint, session, and type.
+   */
+  public aegisWorkspaceThreads<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      limit?: number
+      window_ms?: number
+      status?: AegisThreadStatus
+      severity?: AegisRuleSeverity
+      type?: "violation" | "intervention_injected" | "escalation"
+      session_id?: string
+      preset?: "active_fire" | "new_regressions" | "noisy_rules" | "supervisor_struggling"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "window_ms" },
+            { in: "query", key: "status" },
+            { in: "query", key: "severity" },
+            { in: "query", key: "type" },
+            { in: "query", key: "session_id" },
+            { in: "query", key: "preset" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionAegisWorkspaceThreadsResponses,
+      SessionAegisWorkspaceThreadsErrors,
+      ThrowOnError
+    >({
+      url: "/session/aegis/workspace/threads",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Delete session
    *
    * Delete a session and permanently remove all associated data, including messages and history.
@@ -1500,6 +1557,187 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
+   * Dry run Aegis override
+   *
+   * Preview how many recent events a matcher would match before creating a rule.
+   */
+  public aegisOverrideDryRun<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      matcher?: AegisMatcher
+      window_ms?: number
+      limit_examples?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "matcher" },
+            { in: "body", key: "window_ms" },
+            { in: "body", key: "limit_examples" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionAegisOverrideDryRunResponses,
+      SessionAegisOverrideDryRunErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/aegis/override/dry-run",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete Aegis rule
+   *
+   * Soft delete an Aegis rule by deactivating it.
+   */
+  public aegisRuleDelete<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      ruleID: string
+      directory?: string
+      confirm_global?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "ruleID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "confirm_global" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      SessionAegisRuleDeleteResponses,
+      SessionAegisRuleDeleteErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/aegis/rules/{ruleID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update Aegis rule
+   *
+   * Update an existing Aegis rule and return the updated rule.
+   */
+  public aegisRuleUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      ruleID: string
+      directory?: string
+      statement?: string
+      matcher?: AegisMatcher
+      severity?: AegisRuleSeverity
+      active?: boolean
+      confirm_global?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "ruleID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "statement" },
+            { in: "body", key: "matcher" },
+            { in: "body", key: "severity" },
+            { in: "body", key: "active" },
+            { in: "body", key: "confirm_global" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      SessionAegisRuleUpdateResponses,
+      SessionAegisRuleUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/aegis/rules/{ruleID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Dry run Aegis rule update
+   *
+   * Preview matcher impact before saving rule edits.
+   */
+  public aegisRuleDryRun<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      ruleID: string
+      directory?: string
+      matcher?: AegisMatcher
+      window_ms?: number
+      limit_examples?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "ruleID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "matcher" },
+            { in: "body", key: "window_ms" },
+            { in: "body", key: "limit_examples" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionAegisRuleDryRunResponses,
+      SessionAegisRuleDryRunErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/aegis/rules/{ruleID}/dry-run",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Submit Aegis feedback
    *
    * Submit feedback for an Aegis intervention event.
@@ -1511,6 +1749,8 @@ export class Session2 extends HeyApiClient {
       eventID?: string
       helpful?: boolean
       note?: string
+      fingerprint?: string
+      rule_id?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1524,6 +1764,8 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "eventID" },
             { in: "body", key: "helpful" },
             { in: "body", key: "note" },
+            { in: "body", key: "fingerprint" },
+            { in: "body", key: "rule_id" },
           ],
         },
       ],

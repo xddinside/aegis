@@ -26,7 +26,7 @@ export const SessionRoutes = lazy(() =>
       "/",
       describeRoute({
         summary: "List sessions",
-        description: "Get a list of all OpenCode sessions, sorted by most recently updated.",
+        description: "Get a list of all Aegis sessions, sorted by most recently updated.",
         operationId: "session.list",
         responses: {
           200: {
@@ -161,10 +161,45 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .get(
+      "/aegis/workspace/threads",
+      describeRoute({
+        summary: "Get Aegis workspace threads",
+        description: "Retrieve grouped workspace threads keyed by fingerprint, session, and type.",
+        operationId: "session.aegis_workspace_threads",
+        responses: {
+          200: {
+            description: "Aegis workspace thread view",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.WorkspaceThreads),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          limit: z.coerce.number().int().positive().max(200).optional(),
+          window_ms: z.coerce.number().int().positive().optional(),
+          status: Aegis.ThreadStatus.optional(),
+          severity: Aegis.RuleSeverity.optional(),
+          type: z.enum(["violation", "intervention_injected", "escalation"]).optional(),
+          session_id: z.string().optional(),
+          preset: z.enum(["active_fire", "new_regressions", "noisy_rules", "supervisor_struggling"]).optional(),
+        }),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        return c.json(await Aegis.workspaceThreads(query))
+      },
+    )
+    .get(
       "/:sessionID",
       describeRoute({
         summary: "Get session",
-        description: "Retrieve detailed information about a specific OpenCode session.",
+        description: "Retrieve detailed information about a specific Aegis session.",
         tags: ["Session"],
         operationId: "session.get",
         responses: {
@@ -410,6 +445,152 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .post(
+      "/:sessionID/aegis/override/dry-run",
+      describeRoute({
+        summary: "Dry run Aegis override",
+        description: "Preview how many recent events a matcher would match before creating a rule.",
+        operationId: "session.aegis_override_dry_run",
+        responses: {
+          200: {
+            description: "Dry run preview",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.DryRunResult),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          matcher: Aegis.Matcher,
+          window_ms: z.coerce.number().int().positive().optional(),
+          limit_examples: z.coerce.number().int().positive().optional(),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        return c.json(await Aegis.overrideDryRun({ ...body, sessionID }))
+      },
+    )
+    .patch(
+      "/:sessionID/aegis/rules/:ruleID",
+      describeRoute({
+        summary: "Update Aegis rule",
+        description: "Update an existing Aegis rule and return the updated rule.",
+        operationId: "session.aegis_rule_update",
+        responses: {
+          200: {
+            description: "Updated rule",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.Rule),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          ruleID: z.string().meta({ description: "Rule ID" }),
+        }),
+      ),
+      validator("json", Aegis.RuleUpdateInput.omit({ sessionID: true, ruleID: true })),
+      async (c) => {
+        const param = c.req.valid("param")
+        const body = c.req.valid("json")
+        return c.json(await Aegis.updateRule({ ...body, sessionID: param.sessionID, ruleID: param.ruleID }))
+      },
+    )
+    .delete(
+      "/:sessionID/aegis/rules/:ruleID",
+      describeRoute({
+        summary: "Delete Aegis rule",
+        description: "Soft delete an Aegis rule by deactivating it.",
+        operationId: "session.aegis_rule_delete",
+        responses: {
+          200: {
+            description: "Deleted rule",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.Rule),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          ruleID: z.string().meta({ description: "Rule ID" }),
+        }),
+      ),
+      validator(
+        "query",
+        z.object({
+          confirm_global: z.coerce.boolean().optional(),
+        }),
+      ),
+      async (c) => {
+        const param = c.req.valid("param")
+        const query = c.req.valid("query")
+        return c.json(await Aegis.deleteRule({ sessionID: param.sessionID, ruleID: param.ruleID, ...query }))
+      },
+    )
+    .post(
+      "/:sessionID/aegis/rules/:ruleID/dry-run",
+      describeRoute({
+        summary: "Dry run Aegis rule update",
+        description: "Preview matcher impact before saving rule edits.",
+        operationId: "session.aegis_rule_dry_run",
+        responses: {
+          200: {
+            description: "Dry run preview",
+            content: {
+              "application/json": {
+                schema: resolver(Aegis.DryRunResult),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          ruleID: z.string().meta({ description: "Rule ID" }),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          matcher: Aegis.Matcher,
+          window_ms: z.coerce.number().int().positive().optional(),
+          limit_examples: z.coerce.number().int().positive().optional(),
+        }),
+      ),
+      async (c) => {
+        const param = c.req.valid("param")
+        const body = c.req.valid("json")
+        return c.json(await Aegis.dryRunRule({ ...body, sessionID: param.sessionID }))
+      },
+    )
+    .post(
       "/:sessionID/aegis/feedback",
       describeRoute({
         summary: "Submit Aegis feedback",
@@ -444,7 +625,7 @@ export const SessionRoutes = lazy(() =>
       "/",
       describeRoute({
         summary: "Create session",
-        description: "Create a new OpenCode session for interacting with AI assistants and managing conversations.",
+        description: "Create a new Aegis session for interacting with AI assistants and managing conversations.",
         operationId: "session.create",
         responses: {
           ...errors(400),

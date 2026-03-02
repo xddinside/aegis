@@ -81,9 +81,9 @@ export namespace Server {
           // Allow CORS preflight requests to succeed without auth.
           // Browser clients sending Authorization headers will preflight with OPTIONS.
           if (c.req.method === "OPTIONS") return next()
-          const password = Flag.OPENCODE_SERVER_PASSWORD
+          const password = Flag.AEGIS_SERVER_PASSWORD
           if (!password) return next()
-          const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
+          const username = Flag.AEGIS_SERVER_USERNAME ?? "aegis"
           return basicAuth({ username, password })(c, next)
         })
         .use(async (c, next) => {
@@ -194,7 +194,11 @@ export namespace Server {
         )
         .use(async (c, next) => {
           if (c.req.path === "/log") return next()
-          const raw = c.req.query("directory") || c.req.header("x-opencode-directory") || process.cwd()
+          const raw =
+            c.req.query("directory") ||
+            c.req.header("x-aegis-directory") ||
+            c.req.header("x-opencode-directory") ||
+            process.cwd()
           const directory = (() => {
             try {
               return decodeURIComponent(raw)
@@ -215,9 +219,9 @@ export namespace Server {
           openAPIRouteHandler(app, {
             documentation: {
               info: {
-                title: "opencode",
+                title: "aegis",
                 version: "0.0.3",
-                description: "opencode api",
+                description: "aegis api",
               },
               openapi: "3.1.1",
             },
@@ -239,7 +243,7 @@ export namespace Server {
           "/instance/dispose",
           describeRoute({
             summary: "Dispose instance",
-            description: "Clean up and dispose the current OpenCode instance, releasing all resources.",
+            description: "Clean up and dispose the current Aegis instance, releasing all resources.",
             operationId: "instance.dispose",
             responses: {
               200: {
@@ -261,8 +265,7 @@ export namespace Server {
           "/path",
           describeRoute({
             summary: "Get paths",
-            description:
-              "Retrieve the current working directory and related path information for the OpenCode instance.",
+            description: "Retrieve the current working directory and related path information for the Aegis instance.",
             operationId: "path.get",
             responses: {
               200: {
@@ -326,7 +329,7 @@ export namespace Server {
           "/command",
           describeRoute({
             summary: "List commands",
-            description: "Get a list of all available commands in the OpenCode system.",
+            description: "Get a list of all available commands in the Aegis system.",
             operationId: "command.list",
             responses: {
               200: {
@@ -400,7 +403,7 @@ export namespace Server {
           "/agent",
           describeRoute({
             summary: "List agents",
-            description: "Get a list of all available AI agents in the OpenCode system.",
+            description: "Get a list of all available AI agents in the Aegis system.",
             operationId: "app.agents",
             responses: {
               200: {
@@ -422,7 +425,7 @@ export namespace Server {
           "/skill",
           describeRoute({
             summary: "List skills",
-            description: "Get a list of all available skills in the OpenCode system.",
+            description: "Get a list of all available skills in the Aegis system.",
             operationId: "app.skills",
             responses: {
               200: {
@@ -563,9 +566,9 @@ export namespace Server {
     const result = await generateSpecs(App() as Hono, {
       documentation: {
         info: {
-          title: "opencode",
+          title: "aegis",
           version: "1.0.0",
-          description: "opencode api",
+          description: "aegis api",
         },
         openapi: "3.1.1",
       },

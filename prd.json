@@ -1,0 +1,88 @@
+{
+  "document": {
+    "title": "Aegis Product Requirements Document",
+    "project": "aegis",
+    "version": "0.1.0",
+    "status": "draft",
+    "updated_at": "2026-02-25"
+  },
+  "product_intent": "Aegis should act like a sensible, context-aware overseer that helps worker agents produce project-correct and high-quality UI outcomes with tasteful feedback loops.",
+  "goals": [
+    "Improve UI quality from worker output using an optional verifier loop",
+    "Increase contextual correctness of worker actions by catching obvious project mismatches",
+    "Keep feedback collaborative and useful rather than overly aggressive"
+  ],
+  "initiatives": [
+    {
+      "id": "aegis_ui_verifier_toggle",
+      "priority": "P0",
+      "title": "Toggleable Frontend Helper + UI Verification",
+      "problem": "Worker-created UIs can ship with functional bugs or poor visual decisions without a dedicated review pass.",
+      "outcome": "Aegis can optionally review worker-built UI with Playwriter MCP and provide corrective or taste-improvement feedback.",
+      "requirements": [
+        "Add a toggleable feature flag for frontend verification (enabled or disabled per session/run)",
+        "Load frontend skill in Aegis context for UI-related tasks",
+        "Set up Playwriter MCP integration for UI validation against live rendered output",
+        "If functional or severe UX bugs are found, send explicit blocking feedback to worker with required fixes",
+        "If only quality/taste improvements are found, send non-blocking feedback with collaborative tone and concrete suggestions",
+        "Define a lightweight UI review rubric to represent good taste (layout hierarchy, spacing rhythm, typography choices, color coherence, responsive behavior, accessibility basics)"
+      ],
+      "acceptance_criteria": [
+        "When verifier toggle is off, Aegis does not run UI review and workflow remains unchanged",
+        "When verifier toggle is on and UI has clear bugs, Aegis requests fixes before completion",
+        "When verifier toggle is on and UI is functional but weak stylistically, Aegis sends improvement feedback without blocking",
+        "Feedback messages are specific, actionable, and framed constructively"
+      ],
+      "dependencies": [
+        "Playwriter MCP setup and connection availability",
+        "Frontend skill availability in Aegis execution context"
+      ],
+      "non_goals": [
+        "Replacing worker ownership of implementation",
+        "Enforcing rigid style preferences that ignore project design direction"
+      ]
+    },
+    {
+      "id": "aegis_proactive_context_sense",
+      "priority": "P0",
+      "title": "Proactive Context-Aware Worker Correction",
+      "problem": "Workers can produce outputs that ignore obvious project context (for example generating raw HTML in a Next.js codebase).",
+      "outcome": "Aegis catches context mismatches and redirects workers toward project-appropriate implementations.",
+      "requirements": [
+        "Before validating worker output, inspect repository context (framework, conventions, current directory intent)",
+        "Create mismatch detection rules for common cases (Next.js, React, routing/layout conventions, component vs static file expectations)",
+        "When mismatch is detected, provide corrective feedback that references current project context and expected output format",
+        "Support proactive intervention when user intent and worker artifacts diverge in obvious ways",
+        "Keep interventions sensible and limited to high-confidence corrections"
+      ],
+      "acceptance_criteria": [
+        "In a Next.js project, a request like 'create a hero section' results in component-based guidance rather than acceptance of standalone HTML output",
+        "Aegis flags obvious context mismatches before task completion",
+        "Worker receives corrective instructions with file-format and location guidance",
+        "False-positive rate is low for standard framework conventions"
+      ],
+      "non_goals": [
+        "Blocking on ambiguous stylistic preferences when project context is unclear",
+        "Deep framework linting that duplicates existing CI/lint pipelines"
+      ]
+    }
+  ],
+  "delivery_notes": {
+    "phase_order": [
+      "1) Playwriter MCP setup + verifier toggle plumbing",
+      "2) UI review rubric + feedback policy",
+      "3) Context detection and proactive mismatch guardrails",
+      "4) Tuning thresholds to reduce false positives"
+    ],
+    "success_metrics": [
+      "Reduced number of worker UI revisions caused by obvious bugs after verifier adoption",
+      "Higher rate of project-context-correct first-pass worker outputs",
+      "Positive user sentiment on Aegis feedback tone and usefulness"
+    ]
+  },
+  "open_questions": [
+    "How should good-taste guidance be encoded: fixed rubric only, prompt examples, or both?",
+    "Should verifier toggle default to on for frontend tasks or remain opt-in globally?",
+    "What confidence threshold should trigger blocking vs non-blocking feedback?"
+  ]
+}

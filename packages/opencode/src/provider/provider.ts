@@ -278,7 +278,7 @@ export namespace Provider {
           }
 
           // Region resolution precedence (highest to lowest):
-          // 1. options.region from opencode.json provider config
+          // 1. options.region from aegis.json provider config
           // 2. defaultRegion from AWS_REGION environment variable
           // 3. Default "us-east-1" (baked into defaultRegion)
           const region = options?.region ?? defaultRegion
@@ -478,7 +478,7 @@ export namespace Provider {
       const providerConfig = config.provider?.["gitlab"]
 
       const aiGatewayHeaders = {
-        "User-Agent": `opencode/${Installation.VERSION} gitlab-ai-provider/${GITLAB_PROVIDER_VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
+        "User-Agent": `aegis/${Installation.VERSION} gitlab-ai-provider/${GITLAB_PROVIDER_VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
         ...(providerConfig?.options?.aiGatewayHeaders || {}),
       }
 
@@ -547,7 +547,7 @@ export namespace Provider {
       if (!apiToken) {
         throw new Error(
           "CLOUDFLARE_API_TOKEN (or CF_AIG_TOKEN) is required for Cloudflare AI Gateway. " +
-            "Set it via environment variable or run `opencode auth cloudflare-ai-gateway`.",
+            "Set it via environment variable or run `aegis auth cloudflare-ai-gateway`.",
         )
       }
 
@@ -997,7 +997,7 @@ export namespace Provider {
         model.api.id = model.api.id ?? model.id ?? modelID
         if (modelID === "gpt-5-chat-latest" || (providerID === "openrouter" && modelID === "openai/gpt-5-chat"))
           delete provider.models[modelID]
-        if (model.status === "alpha" && !Flag.OPENCODE_ENABLE_EXPERIMENTAL_MODELS) delete provider.models[modelID]
+        if (model.status === "alpha" && !Flag.AEGIS_ENABLE_EXPERIMENTAL_MODELS) delete provider.models[modelID]
         if (model.status === "deprecated") delete provider.models[modelID]
         if (
           (configProvider?.blacklist && configProvider.blacklist.includes(modelID)) ||
@@ -1266,9 +1266,9 @@ export namespace Provider {
       }
     }
 
-    // Check if opencode provider is available before using it
-    const opencodeProvider = await state().then((state) => state.providers["opencode"])
-    if (opencodeProvider && opencodeProvider.models["gpt-5-nano"]) {
+    // Check if Aegis Zen provider is available before using it
+    const zenProvider = await state().then((state) => state.providers["opencode"])
+    if (zenProvider && zenProvider.models["gpt-5-nano"]) {
       return getModel("opencode", "gpt-5-nano")
     }
 

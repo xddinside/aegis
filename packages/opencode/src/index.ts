@@ -47,7 +47,7 @@ process.on("uncaughtException", (e) => {
 
 const cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName("aegis")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
@@ -74,14 +74,14 @@ const cli = yargs(hideBin(process.argv))
     })
 
     process.env.AGENT = "1"
-    process.env.OPENCODE = "1"
+    process.env.AEGIS = "1"
 
-    Log.Default.info("opencode", {
+    Log.Default.info("aegis", {
       version: Installation.VERSION,
       args: process.argv.slice(2),
     })
 
-    const marker = path.join(Global.Path.data, "opencode.db")
+    const marker = path.join(Global.Path.data, "aegis.db")
     if (!(await Filesystem.exists(marker))) {
       const tty = process.stderr.isTTY
       process.stderr.write("Performing one time database migration, may take a few minutes..." + EOL)

@@ -132,9 +132,9 @@ type IssueQueryResponse = {
   }
 }
 
-const AGENT_USERNAME = "opencode-agent[bot]"
+const AGENT_USERNAME = "aegis-agent[bot]"
 const AGENT_REACTION = "eyes"
-const WORKFLOW_FILE = ".github/workflows/opencode.yml"
+const WORKFLOW_FILE = ".github/workflows/aegis.yml"
 
 // Event categories for routing
 // USER_EVENTS: triggered by user actions, have actor/issueId, support reactions/comments
@@ -239,7 +239,7 @@ export const GithubInstallCommand = cmd({
                 `    1. Commit the \`${WORKFLOW_FILE}\` file and push`,
                 step2,
                 "",
-                "    3. Go to a GitHub issue and comment `/oc summarize` to see the agent in action",
+                "    3. Go to a GitHub issue and comment `/aegis summarize` to see the agent in action",
                 "",
                 "   Learn more about the GitHub agent - https://opencode.ai/docs/github/#usage-examples",
               ].join("\n"),
@@ -323,7 +323,7 @@ export const GithubInstallCommand = cmd({
             if (installation) return s.stop("GitHub app already installed")
 
             // Open browser
-            const url = "https://github.com/apps/opencode-agent"
+            const url = "https://github.com/apps/aegis-agent"
             const command =
               process.platform === "darwin"
                 ? `open "${url}"`
@@ -375,7 +375,7 @@ export const GithubInstallCommand = cmd({
 
             await Filesystem.write(
               path.join(app.root, WORKFLOW_FILE),
-              `name: opencode
+              `name: aegis
 
 on:
   issue_comment:
@@ -384,12 +384,12 @@ on:
     types: [created]
 
 jobs:
-  opencode:
+  aegis:
     if: |
       contains(github.event.comment.body, ' /oc') ||
       startsWith(github.event.comment.body, '/oc') ||
-      contains(github.event.comment.body, ' /opencode') ||
-      startsWith(github.event.comment.body, '/opencode')
+      contains(github.event.comment.body, ' /aegis') ||
+      startsWith(github.event.comment.body, '/aegis')
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -402,8 +402,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run opencode
-        uses: anomalyco/opencode/github@latest${envStr}
+      - name: Run aegis
+        uses: anomalyco/aegis/github@latest${envStr}
         with:
           model: ${provider}/${model}`,
             )
@@ -521,7 +521,7 @@ export const GithubRunCommand = cmd({
           await addReaction(commentType)
         }
 
-        // Setup opencode session
+        // Setup Aegis session
         const repoData = await fetchRepo()
         session = await Session.create({
           permission: [
@@ -539,7 +539,7 @@ export const GithubRunCommand = cmd({
           await Session.share(session.id)
           return session.id.slice(-8)
         })()
-        console.log("opencode session", session.id)
+        console.log("aegis session", session.id)
 
         // Handle event types:
         // REPO_EVENTS (schedule, workflow_dispatch): no issue/PR context, output to logs/PR only
@@ -761,7 +761,7 @@ export const GithubRunCommand = cmd({
         }
 
         const reviewContext = getReviewCommentContext()
-        const mentions = (process.env["MENTIONS"] || "/opencode,/oc")
+        const mentions = (process.env["MENTIONS"] || "/aegis,/ag")
           .split(",")
           .map((m) => m.trim().toLowerCase())
           .filter(Boolean)
@@ -908,7 +908,7 @@ export const GithubRunCommand = cmd({
       }
 
       async function chat(message: string, files: PromptFiles = []) {
-        console.log("Sending message to opencode...")
+        console.log("Sending message to aegis...")
 
         const result = await SessionPrompt.prompt({
           sessionID: session.id,
@@ -1106,9 +1106,9 @@ export const GithubRunCommand = cmd({
           .join("")
         if (type === "schedule" || type === "dispatch") {
           const hex = crypto.randomUUID().slice(0, 6)
-          return `opencode/${type}-${hex}-${timestamp}`
+          return `aegis/${type}-${hex}-${timestamp}`
         }
-        return `opencode/${type}${issueId}-${timestamp}`
+        return `aegis/${type}${issueId}-${timestamp}`
       }
 
       async function pushToNewBranch(summary: string, branch: string, commit: boolean, isSchedule: boolean) {
@@ -1389,7 +1389,7 @@ Co-authored-by: ${actor} <${actor}@users.noreply.github.com>"`
 
           return `<a href="${shareBaseUrl}/s/${shareId}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/opencode-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
         })()
-        const shareUrl = shareId ? `[opencode session](${shareBaseUrl}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
+        const shareUrl = shareId ? `[aegis session](${shareBaseUrl}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
         return `\n\n${image}${shareUrl}[github run](${runUrl})`
       }
 
@@ -1450,7 +1450,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
         return [
           "<github_action_context>",
           "You are running as a GitHub Action. Important:",
-          "- Git push and PR creation are handled AUTOMATICALLY by the opencode infrastructure after your response",
+          "- Git push and PR creation are handled AUTOMATICALLY by the aegis infrastructure after your response",
           "- Do NOT include warnings or disclaimers about GitHub tokens, workflow permissions, or PR creation capabilities",
           "- Do NOT suggest manual steps for creating PRs or pushing code - this happens automatically",
           "- Focus only on the code changes and your analysis/response",
@@ -1588,7 +1588,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
         return [
           "<github_action_context>",
           "You are running as a GitHub Action. Important:",
-          "- Git push and PR creation are handled AUTOMATICALLY by the opencode infrastructure after your response",
+          "- Git push and PR creation are handled AUTOMATICALLY by the aegis infrastructure after your response",
           "- Do NOT include warnings or disclaimers about GitHub tokens, workflow permissions, or PR creation capabilities",
           "- Do NOT suggest manual steps for creating PRs or pushing code - this happens automatically",
           "- Focus only on the code changes and your analysis/response",

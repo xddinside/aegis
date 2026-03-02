@@ -536,18 +536,18 @@ export namespace ACP {
       log.info("initialize", { protocolVersion: params.protocolVersion })
 
       const authMethod: AuthMethod = {
-        description: "Run `opencode auth login` in the terminal",
-        name: "Login with opencode",
-        id: "opencode-login",
+        description: "Run `aegis auth login` in the terminal",
+        name: "Login with Aegis",
+        id: "aegis-login",
       }
 
       // If client supports terminal-auth capability, use that instead.
       if (params.clientCapabilities?._meta?.["terminal-auth"] === true) {
         authMethod._meta = {
           "terminal-auth": {
-            command: "opencode",
+            command: "aegis",
             args: ["auth", "login"],
-            label: "OpenCode Login",
+            label: "Aegis Login",
           },
         }
       }
@@ -572,7 +572,7 @@ export namespace ACP {
         },
         authMethods: [authMethod],
         agentInfo: {
-          name: "OpenCode",
+          name: "Aegis",
           version: Installation.VERSION,
         },
       }
@@ -1011,7 +1011,7 @@ export namespace ACP {
           }
         } else if (part.type === "file") {
           // Replay file attachments as appropriate ACP content blocks.
-          // OpenCode stores files internally as { type: "file", url, filename, mime }.
+          // Aegis stores files internally as { type: "file", url, filename, mime }.
           // We convert these back to ACP blocks based on the URL scheme and MIME type:
           // - file:// URLs → resource_link
           // - data: URLs with image/* → image block
@@ -1572,12 +1572,12 @@ export namespace ACP {
 
     if (specified && !providers.length) return specified
 
-    const opencodeProvider = providers.find((p) => p.id === "opencode")
-    if (opencodeProvider) {
-      if (opencodeProvider.models["big-pickle"]) {
+    const zenProvider = providers.find((p) => p.id === "opencode")
+    if (zenProvider) {
+      if (zenProvider.models["big-pickle"]) {
         return { providerID: "opencode", modelID: "big-pickle" }
       }
-      const [best] = Provider.sort(Object.values(opencodeProvider.models))
+      const [best] = Provider.sort(Object.values(zenProvider.models))
       if (best) {
         return {
           providerID: best.providerID,

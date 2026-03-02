@@ -15,7 +15,12 @@ export function useConnected() {
   )
 }
 
-export function DialogModel(props: { providerID?: string }) {
+export function DialogModel(props: {
+  providerID?: string
+  title?: string
+  current?: { providerID: string; modelID: string }
+  onSelect?: (value: { providerID: string; modelID: string }) => Promise<void> | void
+}) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
@@ -26,6 +31,15 @@ export function DialogModel(props: { providerID?: string }) {
   const providers = createDialogProviderOptions()
 
   const showExtra = createMemo(() => connected() && !props.providerID)
+
+  const pick = (value: { providerID: string; modelID: string }) => {
+    if (props.onSelect) {
+      void props.onSelect(value)
+      return
+    }
+    dialog.clear()
+    local.model.set(value, { recent: true })
+  }
 
   const options = createMemo(() => {
     const needle = query().trim()
@@ -50,8 +64,7 @@ export function DialogModel(props: { providerID?: string }) {
             disabled: provider.id === "opencode" && model.id.includes("-nano"),
             footer: model.cost?.input === 0 && provider.id === "opencode" ? "Free" : undefined,
             onSelect: () => {
-              dialog.clear()
-              local.model.set({ providerID: provider.id, modelID: model.id }, { recent: true })
+              pick({ providerID: provider.id, modelID: model.id })
             },
           },
         ]
@@ -88,8 +101,7 @@ export function DialogModel(props: { providerID?: string }) {
             disabled: provider.id === "opencode" && model.includes("-nano"),
             footer: info.cost?.input === 0 && provider.id === "opencode" ? "Free" : undefined,
             onSelect() {
-              dialog.clear()
-              local.model.set({ providerID: provider.id, modelID: model }, { recent: true })
+              pick({ providerID: provider.id, modelID: model })
             },
           })),
           filter((x) => {
@@ -133,7 +145,8 @@ export function DialogModel(props: { providerID?: string }) {
     props.providerID ? sync.data.provider.find((x) => x.id === props.providerID) : null,
   )
 
-  const title = createMemo(() => provider()?.name ?? "Select model")
+  const title = createMemo(() => props.title ?? provider()?.name ?? "Select model")
+  const current = createMemo(() => props.current ?? local.model.current())
 
   return (
     <DialogSelect<ReturnType<typeof options>[number]["value"]>
@@ -159,7 +172,7 @@ export function DialogModel(props: { providerID?: string }) {
       flat={true}
       skipFilter={true}
       title={title()}
-      current={local.model.current()}
+      current={current()}
     />
   )
 }

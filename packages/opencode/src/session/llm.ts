@@ -208,14 +208,14 @@ export namespace LLM {
       headers: {
         ...(input.model.providerID.startsWith("opencode")
           ? {
-              "x-opencode-project": Instance.project.id,
-              "x-opencode-session": input.sessionID,
-              "x-opencode-request": input.user.id,
-              "x-opencode-client": Flag.OPENCODE_CLIENT,
+              "x-aegis-project": Instance.project.id,
+              "x-aegis-session": input.sessionID,
+              "x-aegis-request": input.user.id,
+              "x-aegis-client": Flag.AEGIS_CLIENT,
             }
           : input.model.providerID !== "anthropic"
             ? {
-                "User-Agent": `opencode/${Installation.VERSION}`,
+                "User-Agent": `aegis/${Installation.VERSION}`,
               }
             : undefined),
         ...input.model.headers,

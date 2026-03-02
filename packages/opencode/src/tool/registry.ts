@@ -96,7 +96,7 @@ export namespace ToolRegistry {
   async function all(): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
     const config = await Config.get()
-    const question = ["app", "cli", "desktop"].includes(Flag.OPENCODE_CLIENT) || Flag.OPENCODE_ENABLE_QUESTION_TOOL
+    const question = ["app", "cli", "desktop"].includes(Flag.AEGIS_CLIENT) || Flag.AEGIS_ENABLE_QUESTION_TOOL
 
     return [
       InvalidTool,
@@ -115,9 +115,9 @@ export namespace ToolRegistry {
       CodeSearchTool,
       SkillTool,
       ApplyPatchTool,
-      ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
+      ...(Flag.AEGIS_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
-      ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool, PlanEnterTool] : []),
+      ...(Flag.AEGIS_EXPERIMENTAL_PLAN_MODE && Flag.AEGIS_CLIENT === "cli" ? [PlanExitTool, PlanEnterTool] : []),
       ...custom,
     ]
   }
@@ -139,7 +139,7 @@ export namespace ToolRegistry {
         .filter((t) => {
           // Enable websearch/codesearch for zen users OR via enable flag
           if (t.id === "codesearch" || t.id === "websearch") {
-            return model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
+            return model.providerID === "opencode" || Flag.AEGIS_ENABLE_EXA
           }
 
           // use apply tool in same format as codex

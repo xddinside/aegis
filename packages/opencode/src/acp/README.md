@@ -49,7 +49,7 @@ opencode acp --cwd /path/to/project
 ACP excludes `QuestionTool` by default.
 
 ```bash
-OPENCODE_ENABLE_QUESTION_TOOL=1 opencode acp
+AEGIS_ENABLE_QUESTION_TOOL=1 opencode acp
 ```
 
 Enable this only for ACP clients that support interactive question prompts.
@@ -69,7 +69,7 @@ Add to your Zed configuration (`~/.config/zed/settings.json`):
 ```json
 {
   "agent_servers": {
-    "OpenCode": {
+    "Aegis": {
       "command": "opencode",
       "args": ["acp"]
     }
@@ -158,7 +158,7 @@ Each component has a single responsibility:
 
 This makes the codebase maintainable and testable.
 
-### Mapping to OpenCode
+### Mapping to Aegis
 
 ACP sessions map cleanly to opencode's internal session model:
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "version": "1.2.10",
-  "name": "opencode",
+  "name": "aegis",
   "type": "module",
   "license": "MIT",
   "private": true,
@@ -19,6 +19,7 @@
     "db": "bun drizzle-kit"
   },
   "bin": {
+    "aegis": "./bin/aegis",
     "opencode": "./bin/opencode"
   },
   "randomField": "this-is-a-random-value-12345",
