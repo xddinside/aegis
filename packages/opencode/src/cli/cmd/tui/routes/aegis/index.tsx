@@ -7,8 +7,10 @@ import { DialogAlert } from "@tui/ui/dialog-alert"
 import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { DialogPrompt } from "@tui/ui/dialog-prompt"
 import { DialogModel } from "@tui/component/dialog-model"
+import { useTerminalDimensions } from "@opentui/solid"
 import { Locale } from "@/util/locale"
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import { Action, Badge, Filter, KV, ListRow, NavButton, Surface } from "./ui"
 
 const PANELS = [
   { id: "overview", title: "Overview" },
@@ -25,6 +27,14 @@ const PRESETS = [
   { id: "supervisor_struggling", label: "Supervisor is struggling" },
 ] as const
 
+const PRESET_SHORT: Record<(typeof PRESETS)[number]["id"], string> = {
+  none: "All",
+  active_fire: "Active",
+  new_regressions: "New reg",
+  noisy_rules: "Noisy",
+  supervisor_struggling: "Supv",
+}
+
 const THREAD_STATUS = [
   { id: "all", label: "All" },
   { id: "open", label: "Open" },
@@ -32,6 +42,14 @@ const THREAD_STATUS = [
   { id: "resolved", label: "Resolved" },
   { id: "noisy", label: "Noisy" },
 ] as const
+
+const THREAD_STATUS_SHORT: Record<(typeof THREAD_STATUS)[number]["id"], string> = {
+  all: "All",
+  open: "Open",
+  watching: "Watch",
+  resolved: "Done",
+  noisy: "Noisy",
+}
 
 type Panel = (typeof PANELS)[number]["id"]
 type Item = Record<string, unknown>
@@ -127,6 +145,8 @@ export function Aegis() {
   const [status, setStatus] = createSignal<(typeof THREAD_STATUS)[number]["id"]>("all")
   const [live, setLive] = createSignal(true)
   const [updated, setUpdated] = createSignal(Date.now())
+  const [pane, setPane] = createSignal<"feed" | "details">("feed")
+  const dimensions = useTerminalDimensions()
 
   const [workspace, workspaceOps] = createResource(async () => {
     const result = await sdk.client.session.aegisWorkspace({})
@@ -254,6 +274,14 @@ export function Aegis() {
       threadItems().length === 0,
   )
 
+  const stacked = createMemo(() => dimensions().width < 200)
+  const tight = createMemo(() => dimensions().width < 160)
+  const sidebarWidth = createMemo(() => {
+    if (tight()) return 22
+    if (stacked()) return 24
+    return 30
+  })
+
   const meta = createMemo(() => ({
     overview: {
       title: "Overview",
@@ -274,7 +302,30 @@ export function Aegis() {
     },
   }))
 
+  const panelHelp = createMemo(() => ({
+    overview: "Watch live risk threads and recent events.",
+    rules: "Tune rule quality with direct feedback.",
+    interventions: "Review interventions and their outcomes.",
+    sessions: "Inspect tracked sessions and queue health.",
+  }))
+
+  const inspectorMeta = createMemo(() => {
+    if (panel() === "overview" && view() === "threads")
+      return { title: "Thread details", note: "Compliance and feedback" }
+    if (panel() === "overview" && view() === "events") return { title: "Event details", note: "Signal context" }
+    if (panel() === "rules") return { title: "Rule details", note: "Scope, matcher, confidence" }
+    if (panel() === "interventions") return { title: "Intervention details", note: "Summary and action" }
+    return { title: "Session details", note: "Health and recent activity" }
+  })
+
   const now = createMemo(() => threads()?.now)
+  const scrollbar = createMemo(() => ({
+    trackOptions: {
+      backgroundColor: theme.background,
+      foregroundColor: theme.borderActive,
+    },
+  }))
+
   const supervisor = createMemo(() => workspace()?.supervisor)
   const supervisorCurrent = createMemo(() => {
     const item = supervisor()
@@ -540,6 +591,439 @@ export function Aegis() {
     pull()
   }
 
+  const jump = (id: string) => {
+    navigate({
+      type: "session",
+      sessionID: id,
+    })
+  }
+
+  const terse = (value: string, size: number) => {
+    if (!tight()) return value
+    return clip(value, size)
+  }
+
+  const pickPanel = (id: Panel) => {
+    setPanel(id)
+    setPane("feed")
+  }
+
+  const pickThread = (id: string) => {
+    setThreadID(id)
+    if (stacked()) setPane("details")
+  }
+
+  const pickEvent = (id: string) => {
+    setEventID(id)
+    if (stacked()) setPane("details")
+  }
+
+  const pickRule = (id: string) => {
+    setRuleID(id)
+    if (stacked()) setPane("details")
+  }
+
+  const pickSession = (id: string) => {
+    setSessionID(id)
+    if (stacked()) setPane("details")
+  }
+
+  createEffect(() => {
+    if (!stacked() && pane() !== "feed") setPane("feed")
+  })
+
+  const feedBody = () => (
+    <scrollbox flexGrow={1} paddingRight={1} verticalScrollbarOptions={scrollbar()}>
+      <Show when={panel() === "overview"}>
+        <Show when={view() === "threads"}>
+          <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
+            <Show when={!tight()}>
+              <text fg={theme.textMuted}>Status</text>
+            </Show>
+            <For each={THREAD_STATUS}>
+              {(item) => (
+                <Filter
+                  label={tight() ? THREAD_STATUS_SHORT[item.id] : item.label}
+                  active={status() === item.id}
+                  onClick={() => setStatus(item.id)}
+                  tight={tight()}
+                />
+              )}
+            </For>
+          </box>
+          <Show
+            when={threadItems().length > 0}
+            fallback={<text fg={theme.textMuted}>No thread matches this filter.</text>}
+          >
+            <For each={threadItems().slice(0, 80)}>
+              {(item) => (
+                <ListRow active={threadID() === item.key} onClick={() => pickThread(item.key)} tight={tight()}>
+                  <box justifyContent="space-between">
+                    <box flexDirection="row" gap={1}>
+                      <Badge
+                        label={item.status.toUpperCase()}
+                        tone={
+                          item.status === "resolved"
+                            ? "success"
+                            : item.status === "noisy"
+                              ? "warning"
+                              : tone(item.severity)
+                        }
+                      />
+                      <Show when={!tight()}>
+                        <text fg={theme.textMuted}>{item.type.replaceAll("_", " ")}</text>
+                      </Show>
+                    </box>
+                    <text fg={theme.textMuted} wrapMode="none">
+                      {Locale.time(item.last_seen)} {short(item.session_id)}
+                    </text>
+                  </box>
+                  <text fg={theme.text} wrapMode="word">
+                    {clip(item.statement, tight() ? 96 : 140)}
+                  </text>
+                  <text fg={theme.textMuted} wrapMode="none">
+                    fp {clip(item.fingerprint, tight() ? 24 : 36)} | {item.count}x | L{item.level} |{" "}
+                    {item.compliance.verdict}
+                  </text>
+                </ListRow>
+              )}
+            </For>
+          </Show>
+        </Show>
+
+        <Show when={view() === "events"}>
+          <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
+            <Show when={!tight()}>
+              <text fg={theme.textMuted}>Mode</text>
+            </Show>
+            <Filter label="Signal" active={mode() === "signal"} onClick={() => setMode("signal")} tight={tight()} />
+            <Filter label="All" active={mode() === "all"} onClick={() => setMode("all")} tight={tight()} />
+          </box>
+          <Show when={overview().length > 0} fallback={<text fg={theme.textMuted}>No events in this feed.</text>}>
+            <For each={overview().slice(0, 80)}>
+              {(item) => (
+                <ListRow active={eventID() === item.id} onClick={() => pickEvent(item.id)} tight={tight()}>
+                  <box justifyContent="space-between">
+                    <Badge label={label(item.type)} tone={tone(sev((item.payload as Item).severity) ?? "medium")} />
+                    <text fg={theme.textMuted} wrapMode="none">
+                      {Locale.time(item.time.created)} {short(item.session_id)}
+                    </text>
+                  </box>
+                  <text fg={theme.text} wrapMode="word">
+                    {clip(summary(item), tight() ? 96 : 150)}
+                  </text>
+                </ListRow>
+              )}
+            </For>
+          </Show>
+        </Show>
+      </Show>
+
+      <Show when={panel() === "rules"}>
+        <Show when={rules().length > 0} fallback={<text fg={theme.textMuted}>No rules yet.</text>}>
+          <For each={rules()}>
+            {(item) => {
+              const row = feedback()[item.id]
+              return (
+                <ListRow active={ruleID() === item.id} onClick={() => pickRule(item.id)} tight={tight()}>
+                  <box flexDirection="row" gap={1}>
+                    <Badge label={item.scope.toUpperCase()} tone="muted" />
+                    <Badge label={item.severity.toUpperCase()} tone={tone(item.severity)} />
+                  </box>
+                  <text fg={item.active ? theme.text : theme.textMuted} wrapMode="word">
+                    {clip(item.statement, tight() ? 96 : 160)}
+                  </text>
+                  <text fg={theme.textMuted} wrapMode="none">
+                    {item.kind} | helpful {row?.score_7d ?? 0}/{row?.count_7d ?? 0}
+                  </text>
+                </ListRow>
+              )
+            }}
+          </For>
+        </Show>
+      </Show>
+
+      <Show when={panel() === "interventions"}>
+        <Show when={interventions().length > 0} fallback={<text fg={theme.textMuted}>No interventions yet.</text>}>
+          <For each={interventions()}>
+            {(item) => {
+              const payload = item.payload as Item
+              const level = sev(payload.severity) ?? "medium"
+              return (
+                <ListRow active={eventID() === item.id} onClick={() => pickEvent(item.id)} tight={tight()}>
+                  <box justifyContent="space-between">
+                    <Badge label={level.toUpperCase()} tone={tone(level)} />
+                    <text fg={theme.textMuted} wrapMode="none">
+                      {Locale.time(item.time.created)} {short(item.session_id)}
+                    </text>
+                  </box>
+                  <text fg={theme.text} wrapMode="word">
+                    {clip(summary(item), tight() ? 96 : 160)}
+                  </text>
+                  <Show when={action(item)}>
+                    {(value) => (
+                      <text fg={theme.warning} wrapMode="word">
+                        action {value()}
+                      </text>
+                    )}
+                  </Show>
+                </ListRow>
+              )
+            }}
+          </For>
+        </Show>
+      </Show>
+
+      <Show when={panel() === "sessions"}>
+        <Show when={sessions().length > 0} fallback={<text fg={theme.textMuted}>No sessions tracked yet.</text>}>
+          <For each={sessions()}>
+            {(item) => (
+              <ListRow
+                active={sessionID() === item.session_id}
+                onClick={() => pickSession(item.session_id)}
+                tight={tight()}
+              >
+                <text fg={theme.text} wrapMode="word">
+                  {clip(item.title, tight() ? 72 : 160)}
+                </text>
+                <text fg={theme.textMuted} wrapMode="none">
+                  {short(item.session_id)} | {item.status} | checks {item.checks} | unresolved {item.unresolved}
+                </text>
+              </ListRow>
+            )}
+          </For>
+        </Show>
+      </Show>
+    </scrollbox>
+  )
+
+  const inspectorBody = () => (
+    <scrollbox flexGrow={1} paddingRight={1} verticalScrollbarOptions={scrollbar()}>
+      <Show when={panel() === "overview" && view() === "threads" && selectedThread()}>
+        {(item) => (
+          <Surface tight={tight()}>
+            <KV label="Thread" value={terse(item().key, 60)} tone="muted" />
+            <KV
+              label="Status"
+              value={item().status.toUpperCase()}
+              tone={item().status === "resolved" ? "success" : "warning"}
+            />
+            <KV label="Fingerprint" value={terse(item().fingerprint, 64)} tone="muted" />
+            <KV label="Session" value={terse(item().session_id, 40)} />
+            <KV label="Type" value={item().type} />
+            <KV label="Severity" value={item().severity.toUpperCase()} tone={tone(item().severity)} />
+            <KV label="Count" value={`${item().count}`} tone="muted" />
+            <KV label="Level" value={`${item().level}`} tone="muted" />
+            <KV label="Last seen" value={Locale.time(item().last_seen)} tone="muted" />
+            <text fg={theme.text} wrapMode="word">
+              {item().statement}
+            </text>
+
+            <text fg={theme.textMuted}>Compliance loop</text>
+            <KV label="Last instruction" value={item().compliance.last_instruction ?? "unknown"} tone="muted" />
+            <KV label="Observed response" value={item().compliance.observed_response ?? "unknown"} tone="muted" />
+            <KV
+              label="Verdict"
+              value={item().compliance.verdict.toUpperCase()}
+              tone={item().compliance.verdict === "complied" ? "success" : "warning"}
+            />
+            <KV label="Auto-followups" value={`${item().compliance.followups}`} tone="muted" />
+
+            <box flexDirection="row" gap={1}>
+              <Action label="Helpful" onClick={() => void markFeedback(true)} tight={tight()} />
+              <Action label="Not helpful" onClick={() => void markFeedback(false)} tight={tight()} />
+            </box>
+
+            <Action
+              label={`Open session ${short(item().session_id)}`}
+              onClick={() => jump(item().session_id)}
+              tone="primary"
+            />
+          </Surface>
+        )}
+      </Show>
+
+      <Show when={panel() === "overview" && view() === "events" && selectedEvent()}>
+        {(item) => {
+          const payload = item().payload as Item
+          const level = sev(payload.severity) ?? "medium"
+          return (
+            <Surface tight={tight()}>
+              <KV label="Event ID" value={terse(item().id, 52)} />
+              <KV label="Type" value={label(item().type)} />
+              <KV label="Session" value={terse(item().session_id, 40)} />
+              <KV label="When" value={Locale.time(item().time.created)} />
+              <KV label="Severity" value={level.toUpperCase()} tone={tone(level)} />
+              <text fg={theme.text} wrapMode="word">
+                {clip(summary(item()), 360)}
+              </text>
+
+              <text fg={theme.textMuted}>Compliance loop</text>
+              <KV
+                label="Last instruction"
+                value={focusThread()?.compliance.last_instruction ?? "unknown"}
+                tone="muted"
+              />
+              <KV
+                label="Observed response"
+                value={focusThread()?.compliance.observed_response ?? "unknown"}
+                tone="muted"
+              />
+              <KV
+                label="Verdict"
+                value={(focusThread()?.compliance.verdict ?? "unknown").toUpperCase()}
+                tone="warning"
+              />
+              <KV label="Auto-followups" value={`${focusThread()?.compliance.followups ?? 0}`} tone="muted" />
+
+              <box flexDirection="row" gap={1}>
+                <Action label="Helpful" onClick={() => void markFeedback(true)} tight={tight()} />
+                <Action label="Not helpful" onClick={() => void markFeedback(false)} tight={tight()} />
+              </box>
+
+              <Action
+                label={`Open session ${short(item().session_id)}`}
+                onClick={() => jump(item().session_id)}
+                tone="primary"
+              />
+            </Surface>
+          )
+        }}
+      </Show>
+
+      <Show when={panel() === "rules" && selectedRule()}>
+        {(item) => {
+          const row = feedback()[item().id]
+          return (
+            <Surface tight={tight()}>
+              <KV label="ID" value={terse(item().id, 48)} />
+              <KV label="Scope" value={item().scope} />
+              <KV label="Kind" value={item().kind} />
+              <KV label="Severity" value={item().severity.toUpperCase()} tone={tone(item().severity)} />
+              <KV label="Active" value={item().active ? "yes" : "no"} />
+              <KV label="Confidence" value={`${item().confidence}`} />
+              <KV label="Helpfulness" value={`${row?.score_7d ?? 0} / ${row?.count_7d ?? 0} (7d)`} tone="muted" />
+              <KV
+                label="Source"
+                value={`${item().source?.type ?? "unknown"} ${item().source?.value ?? ""}`}
+                tone="muted"
+              />
+              <text fg={theme.text} wrapMode="word">
+                {item().statement}
+              </text>
+              <Show when={item().scope === "global"}>
+                <text fg={theme.warning} wrapMode="word">
+                  Global rule: edits affect all projects.
+                </text>
+              </Show>
+              <Show when={item().matcher.tool || item().matcher.pattern || item().matcher.not_pattern}>
+                <box>
+                  <Show when={item().matcher.tool}>{(value) => <KV label="Tool" value={value()} tone="muted" />}</Show>
+                  <Show when={item().matcher.pattern}>
+                    {(value) => <KV label="Pattern" value={value()} tone="muted" />}
+                  </Show>
+                  <Show when={item().matcher.not_pattern}>
+                    {(value) => <KV label="Not Pattern" value={value()} tone="muted" />}
+                  </Show>
+                </box>
+              </Show>
+              <box flexDirection="row" gap={1}>
+                <Action label="Edit + dry-run" onClick={() => void editRule()} tone="primary" tight={tight()} />
+                <Action
+                  label={item().active ? "Deactivate" : "Activate"}
+                  onClick={() => void toggleRule()}
+                  tight={tight()}
+                />
+                <Action label="Delete" onClick={() => void deleteRule()} tone="danger" tight={tight()} />
+              </box>
+            </Surface>
+          )
+        }}
+      </Show>
+
+      <Show when={panel() === "interventions" && selectedEvent()}>
+        {(item) => {
+          const payload = item().payload as Item
+          const level = sev(payload.severity) ?? "medium"
+          return (
+            <Surface tight={tight()}>
+              <KV label="ID" value={terse(item().id, 52)} />
+              <KV label="Type" value={label(item().type)} />
+              <KV label="Session" value={terse(item().session_id, 40)} />
+              <KV label="When" value={Locale.time(item().time.created)} />
+              <KV label="Severity" value={level.toUpperCase()} tone={tone(level)} />
+              <text fg={theme.text} wrapMode="word">
+                {summary(item())}
+              </text>
+              <Show when={action(item())}>
+                {(value) => (
+                  <text fg={theme.warning} wrapMode="word">
+                    Action {value()}
+                  </text>
+                )}
+              </Show>
+              <Show when={text(payload.fingerprint)}>
+                {(value) => <KV label="Fingerprint" value={terse(value(), 64)} tone="muted" />}
+              </Show>
+              <Show when={payload.level !== undefined}>
+                <KV label="Level" value={`${payload.level}`} tone="muted" />
+              </Show>
+              <Action
+                label={`Open session ${short(item().session_id)}`}
+                onClick={() => jump(item().session_id)}
+                tone="primary"
+              />
+            </Surface>
+          )
+        }}
+      </Show>
+
+      <Show when={panel() === "sessions" && selectedSession()}>
+        {(item) => (
+          <Surface tight={tight()}>
+            <KV label="Title" value={item().title} />
+            <KV label="ID" value={terse(item().session_id, 40)} />
+            <KV label="Status" value={item().status} />
+            <KV label="Mode" value={item().mode} />
+            <KV label="Model" value={item().model ?? "default"} />
+            <KV label="Checks" value={`${item().checks}`} />
+            <KV label="Queue" value={`${item().queue}`} tone={item().queue > 0 ? "warning" : "muted"} />
+            <KV
+              label="Unresolved"
+              value={`${item().unresolved}`}
+              tone={item().unresolved > 0 ? "warning" : "success"}
+            />
+            <KV
+              label="Interventions"
+              value={`${item().interventions}`}
+              tone={item().interventions > 0 ? "warning" : "muted"}
+            />
+            <KV label="Tokens" value={`${item().tokens.input}/${item().tokens.output}`} tone="muted" />
+            <Show when={item().last_violation}>
+              {(value) => (
+                <text fg={theme.warning} wrapMode="word">
+                  Last violation {value().statement}
+                </text>
+              )}
+            </Show>
+            <Show when={item().last_intervention}>
+              {(value) => (
+                <text fg={theme.textMuted} wrapMode="word">
+                  Last intervention level {value().level} fingerprint {terse(value().fingerprint, 48)}
+                </text>
+              )}
+            </Show>
+            <Action
+              label={`Open session ${short(item().session_id)}`}
+              onClick={() => jump(item().session_id)}
+              tone="primary"
+            />
+          </Surface>
+        )}
+      </Show>
+    </scrollbox>
+  )
+
   return (
     <box
       width="100%"
@@ -571,40 +1055,45 @@ export function Aegis() {
         >
           <box flexGrow={1} flexDirection="row" gap={1}>
             <box
-              width={26}
+              width={sidebarWidth()}
               border={["right"]}
               borderColor={theme.border}
               paddingRight={1}
               flexDirection="column"
               gap={1}
             >
-              <box
-                paddingLeft={1}
-                paddingRight={1}
-                paddingTop={1}
-                paddingBottom={1}
-                backgroundColor={theme.backgroundPanel}
-              >
-                <text fg={theme.text}>
-                  <b>Now</b>
+              <Surface tight={tight()}>
+                <text fg={theme.text} wrapMode="none">
+                  <b>{tight() ? "Aegis" : "Aegis control center"}</b>
                 </text>
+                <text fg={theme.textMuted} wrapMode="none">
+                  {sessions().length} tracked sessions
+                </text>
+              </Surface>
+
+              <Surface tight={tight()}>
+                <box flexDirection="row" justifyContent="space-between">
+                  <text fg={theme.text}>
+                    <b>{tight() ? "Status" : "Live status"}</b>
+                  </text>
+                  <Badge label={live() ? "LIVE" : "PAUSED"} tone={live() ? "success" : "warning"} />
+                </box>
                 <KV
                   label="State"
                   value={label(now()?.state ?? "watching")}
                   tone={now()?.state === "intervening" ? "warning" : "muted"}
                 />
                 <KV label="Session" value={short(now()?.session_id ?? "none")} tone="muted" />
-                <KV label="Agent" value={now()?.agent ?? "unknown"} tone="muted" />
-                <KV label="Updated" value={Locale.time(updated())} tone="muted" />
-              </box>
+                <Show when={!tight()}>
+                  <KV label="Agent" value={now()?.agent ?? "unknown"} tone="muted" />
+                </Show>
+                <KV label="Refresh" value={Locale.time(updated())} tone="muted" />
+              </Surface>
 
-              <box
-                paddingLeft={1}
-                paddingRight={1}
-                paddingTop={1}
-                paddingBottom={1}
-                backgroundColor={theme.backgroundPanel}
-              >
+              <Surface tight={tight()}>
+                <text fg={theme.text}>
+                  <b>{tight() ? "Health" : "Workspace health"}</b>
+                </text>
                 <KV
                   label="Unresolved"
                   value={`${stats().unresolved}`}
@@ -617,576 +1106,152 @@ export function Aegis() {
                   value={`${stats().interventions}`}
                   tone={stats().interventions > 0 ? "warning" : "muted"}
                 />
-                <KV
-                  label="Supervisor"
-                  value={supervisorLabel()}
-                  tone={supervisor()?.configured ? "muted" : "warning"}
-                />
-                <KV label="Scope" value="global" tone="muted" />
+                <Show when={!tight()}>
+                  <KV
+                    label="Supervisor"
+                    value={terse(supervisorLabel(), 26)}
+                    tone={supervisor()?.configured ? "muted" : "warning"}
+                  />
+                </Show>
                 <box paddingTop={1}>
-                  <Action label="Set model (global)" onClick={setSupervisorModel} />
+                  <Action
+                    label={tight() ? "Set model" : "Set model (global)"}
+                    onClick={setSupervisorModel}
+                    tone="primary"
+                    tight={tight()}
+                  />
                 </box>
-              </box>
+              </Surface>
 
+              <text fg={theme.textMuted}>Navigate</text>
               <For each={PANELS}>
                 {(item) => (
-                  <box
-                    paddingLeft={1}
-                    paddingRight={1}
-                    paddingTop={1}
-                    paddingBottom={1}
-                    onMouseUp={() => setPanel(item.id)}
-                    backgroundColor={panel() === item.id ? theme.backgroundElement : theme.background}
-                    flexDirection="column"
-                  >
-                    <text fg={panel() === item.id ? theme.text : theme.textMuted}>
-                      {panel() === item.id ? "> " : "  "}
-                      {item.title}
-                    </text>
-                    <text fg={theme.textMuted}>{meta()[item.id].count}</text>
-                  </box>
+                  <NavButton
+                    title={tight() ? item.title.slice(0, 8) : item.title}
+                    count={meta()[item.id].count}
+                    active={panel() === item.id}
+                    onClick={() => pickPanel(item.id)}
+                    tight={tight()}
+                  />
                 )}
               </For>
             </box>
 
             <box
               flexGrow={3}
-              border={["right"]}
+              border={stacked() ? undefined : ["right"]}
               borderColor={theme.border}
               paddingLeft={1}
               paddingRight={1}
               flexDirection="column"
             >
-              <box flexShrink={0} paddingBottom={1} justifyContent="space-between">
-                <text fg={theme.text}>
-                  <b>{meta()[panel()].title}</b>
-                </text>
-                <text fg={theme.textMuted}>{meta()[panel()].count}</text>
+              <box flexShrink={0} paddingBottom={1} flexDirection="column" gap={0}>
+                <box justifyContent="space-between">
+                  <text fg={theme.text}>
+                    <b>{meta()[panel()].title}</b>
+                  </text>
+                  <text fg={theme.textMuted}>{meta()[panel()].count}</text>
+                </box>
+                <Show when={!tight()}>
+                  <text fg={theme.textMuted}>{panelHelp()[panel()]}</text>
+                </Show>
               </box>
 
-              <scrollbox flexGrow={1} paddingRight={1}>
-                <Show when={panel() === "overview"}>
-                  <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
-                    <Filter label="Threads" active={view() === "threads"} onClick={() => setView("threads")} />
-                    <Filter label="Events" active={view() === "events"} onClick={() => setView("events")} />
-                    <Filter
-                      label={live() ? "Live" : "Paused"}
-                      active={live()}
-                      onClick={() => setLive((prev) => !prev)}
-                    />
-                    <Filter label="Refresh" active={false} onClick={pull} />
+              <Show when={stacked()}>
+                <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
+                  <Filter label="Feed" active={pane() === "feed"} onClick={() => setPane("feed")} tight={tight()} />
+                  <Filter
+                    label="Details"
+                    active={pane() === "details"}
+                    onClick={() => setPane("details")}
+                    tight={tight()}
+                  />
+                </box>
+              </Show>
+
+              <Show when={panel() === "overview"}>
+                <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
+                  <Filter
+                    label="Threads"
+                    active={view() === "threads"}
+                    onClick={() => {
+                      setView("threads")
+                      setPane("feed")
+                    }}
+                    tight={tight()}
+                  />
+                  <Filter
+                    label="Events"
+                    active={view() === "events"}
+                    onClick={() => {
+                      setView("events")
+                      setPane("feed")
+                    }}
+                    tight={tight()}
+                  />
+                  <Filter
+                    label={live() ? "Live" : "Paused"}
+                    active={live()}
+                    onClick={() => setLive((prev) => !prev)}
+                    tight={tight()}
+                  />
+                  <Filter label="Refresh" active={false} onClick={pull} tight={tight()} />
+                </box>
+                <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
+                  <Show when={!tight()}>
+                    <text fg={theme.textMuted}>Preset</text>
+                  </Show>
+                  <For each={PRESETS}>
+                    {(item) => (
+                      <Filter
+                        label={tight() ? PRESET_SHORT[item.id] : item.label}
+                        active={preset() === item.id}
+                        onClick={() => setPreset(item.id)}
+                        tight={tight()}
+                      />
+                    )}
+                  </For>
+                </box>
+              </Show>
+
+              <Show when={panel() === "rules"}>
+                <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
+                  <Action label="New rule" onClick={() => void newRule()} tone="primary" tight={tight()} />
+                </box>
+              </Show>
+
+              <Show when={!stacked() || pane() === "feed"}>{feedBody()}</Show>
+
+              <Show when={stacked() && pane() === "details"}>
+                <box flexShrink={0} paddingBottom={1} flexDirection="column" gap={0}>
+                  <box justifyContent="space-between">
+                    <text fg={theme.text}>
+                      <b>{inspectorMeta().title}</b>
+                    </text>
+                    <Action label="Back" onClick={() => setPane("feed")} tight={tight()} />
                   </box>
-                  <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
-                    <For each={PRESETS}>
-                      {(item) => (
-                        <Filter label={item.label} active={preset() === item.id} onClick={() => setPreset(item.id)} />
-                      )}
-                    </For>
-                  </box>
-                  <Show when={view() === "threads"}>
-                    <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
-                      <For each={THREAD_STATUS}>
-                        {(item) => (
-                          <Filter label={item.label} active={status() === item.id} onClick={() => setStatus(item.id)} />
-                        )}
-                      </For>
-                    </box>
-                    <Show
-                      when={threadItems().length > 0}
-                      fallback={<text fg={theme.textMuted}>No thread matches this filter.</text>}
-                    >
-                      <For each={threadItems().slice(0, 80)}>
-                        {(item) => (
-                          <box
-                            paddingLeft={1}
-                            paddingRight={1}
-                            paddingTop={1}
-                            paddingBottom={1}
-                            backgroundColor={threadID() === item.key ? theme.backgroundElement : theme.backgroundPanel}
-                            onMouseUp={() => setThreadID(item.key)}
-                            flexDirection="column"
-                          >
-                            <box justifyContent="space-between">
-                              <text
-                                fg={
-                                  item.status === "resolved"
-                                    ? theme.success
-                                    : item.status === "noisy"
-                                      ? theme.warning
-                                      : tone(item.severity) === "error"
-                                        ? theme.error
-                                        : theme.text
-                                }
-                              >
-                                {item.status.toUpperCase()} {item.type.replaceAll("_", " ")}
-                              </text>
-                              <text fg={theme.textMuted}>
-                                {Locale.time(item.last_seen)} {short(item.session_id)}
-                              </text>
-                            </box>
-                            <text fg={theme.text} wrapMode="none">
-                              {clip(item.statement, 110)}
-                            </text>
-                            <text fg={theme.textMuted} wrapMode="none">
-                              fp {clip(item.fingerprint, 30)} · count {item.count} · L{item.level} ·{" "}
-                              {item.compliance.verdict}
-                            </text>
-                          </box>
-                        )}
-                      </For>
-                    </Show>
+                  <Show when={!tight()}>
+                    <text fg={theme.textMuted}>{inspectorMeta().note}</text>
                   </Show>
-
-                  <Show when={view() === "events"}>
-                    <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
-                      <Filter label="Signal" active={mode() === "signal"} onClick={() => setMode("signal")} />
-                      <Filter label="All" active={mode() === "all"} onClick={() => setMode("all")} />
-                    </box>
-                    <Show
-                      when={overview().length > 0}
-                      fallback={<text fg={theme.textMuted}>No events in this feed.</text>}
-                    >
-                      <For each={overview().slice(0, 80)}>
-                        {(item) => (
-                          <box
-                            paddingLeft={1}
-                            paddingRight={1}
-                            paddingTop={1}
-                            paddingBottom={1}
-                            backgroundColor={eventID() === item.id ? theme.backgroundElement : theme.backgroundPanel}
-                            onMouseUp={() => setEventID(item.id)}
-                            flexDirection="column"
-                          >
-                            <box justifyContent="space-between">
-                              <text fg={tone(sev((item.payload as Item).severity) ?? "medium")}>
-                                {label(item.type)}
-                              </text>
-                              <text fg={theme.textMuted}>
-                                {Locale.time(item.time.created)} {short(item.session_id)}
-                              </text>
-                            </box>
-                            <text fg={theme.text} wrapMode="none">
-                              {clip(summary(item), 120)}
-                            </text>
-                          </box>
-                        )}
-                      </For>
-                    </Show>
-                  </Show>
-                </Show>
-
-                <Show when={panel() === "rules"}>
-                  <box flexShrink={0} flexDirection="row" gap={1} paddingBottom={1}>
-                    <Filter label="New rule" active={false} onClick={() => void newRule()} />
-                  </box>
-                  <Show when={rules().length > 0} fallback={<text fg={theme.textMuted}>No rules yet.</text>}>
-                    <For each={rules()}>
-                      {(item) => {
-                        const row = feedback()[item.id]
-                        return (
-                          <box
-                            paddingLeft={1}
-                            paddingRight={1}
-                            paddingTop={1}
-                            paddingBottom={1}
-                            backgroundColor={ruleID() === item.id ? theme.backgroundElement : theme.backgroundPanel}
-                            onMouseUp={() => setRuleID(item.id)}
-                          >
-                            <text fg={item.active ? theme.text : theme.textMuted} wrapMode="word">
-                              [{item.scope}] {item.statement}
-                            </text>
-                            <text fg={tone(item.severity)}>
-                              {item.severity.toUpperCase()} {item.kind} · helpful {row?.score_7d ?? 0} /{" "}
-                              {row?.count_7d ?? 0}
-                            </text>
-                          </box>
-                        )
-                      }}
-                    </For>
-                  </Show>
-                </Show>
-
-                <Show when={panel() === "interventions"}>
-                  <Show
-                    when={interventions().length > 0}
-                    fallback={<text fg={theme.textMuted}>No interventions yet.</text>}
-                  >
-                    <For each={interventions()}>
-                      {(item) => {
-                        const payload = item.payload as Item
-                        const level = sev(payload.severity) ?? "medium"
-                        return (
-                          <box
-                            paddingLeft={1}
-                            paddingRight={1}
-                            paddingTop={1}
-                            paddingBottom={1}
-                            backgroundColor={eventID() === item.id ? theme.backgroundElement : theme.backgroundPanel}
-                            onMouseUp={() => setEventID(item.id)}
-                          >
-                            <text fg={tone(level)} wrapMode="word">
-                              {level.toUpperCase()} {summary(item)}
-                            </text>
-                            <Show when={action(item)}>
-                              {(value) => (
-                                <text fg={theme.warning} wrapMode="word">
-                                  action {value()}
-                                </text>
-                              )}
-                            </Show>
-                            <text fg={theme.textMuted}>
-                              {Locale.time(item.time.created)} {item.type} session {short(item.session_id)}
-                            </text>
-                          </box>
-                        )
-                      }}
-                    </For>
-                  </Show>
-                </Show>
-
-                <Show when={panel() === "sessions"}>
-                  <Show
-                    when={sessions().length > 0}
-                    fallback={<text fg={theme.textMuted}>No sessions tracked yet.</text>}
-                  >
-                    <For each={sessions()}>
-                      {(item) => (
-                        <box
-                          paddingLeft={1}
-                          paddingRight={1}
-                          paddingTop={1}
-                          paddingBottom={1}
-                          backgroundColor={
-                            sessionID() === item.session_id ? theme.backgroundElement : theme.backgroundPanel
-                          }
-                          onMouseUp={() => setSessionID(item.session_id)}
-                        >
-                          <text fg={theme.text} wrapMode="word">
-                            {item.title}
-                          </text>
-                          <text fg={theme.textMuted}>
-                            {short(item.session_id)} {item.status} checks {item.checks} unresolved {item.unresolved}
-                          </text>
-                        </box>
-                      )}
-                    </For>
-                  </Show>
-                </Show>
-              </scrollbox>
+                </box>
+                {inspectorBody()}
+              </Show>
             </box>
 
-            <box flexGrow={2} paddingLeft={1} paddingRight={1} flexDirection="column">
-              <box flexShrink={0} paddingBottom={1}>
-                <text fg={theme.text}>
-                  <b>Inspector</b>
-                </text>
+            <Show when={!stacked()}>
+              <box flexGrow={2} paddingLeft={1} paddingRight={1} flexDirection="column">
+                <box flexShrink={0} paddingBottom={1} flexDirection="column" gap={0}>
+                  <text fg={theme.text}>
+                    <b>{inspectorMeta().title}</b>
+                  </text>
+                  <text fg={theme.textMuted}>{inspectorMeta().note}</text>
+                </box>
+                {inspectorBody()}
               </box>
-
-              <scrollbox flexGrow={1} paddingRight={1}>
-                <Show when={panel() === "overview" && view() === "threads" && selectedThread()}>
-                  {(item) => (
-                    <box gap={1}>
-                      <KV label="Thread" value={item().key} tone="muted" />
-                      <KV
-                        label="Status"
-                        value={item().status.toUpperCase()}
-                        tone={item().status === "resolved" ? "success" : "warning"}
-                      />
-                      <KV label="Fingerprint" value={item().fingerprint} tone="muted" />
-                      <KV label="Session" value={item().session_id} />
-                      <KV label="Type" value={item().type} />
-                      <KV label="Severity" value={item().severity.toUpperCase()} tone={tone(item().severity)} />
-                      <KV label="Count" value={`${item().count}`} tone="muted" />
-                      <KV label="Level" value={`${item().level}`} tone="muted" />
-                      <KV label="Last seen" value={Locale.time(item().last_seen)} tone="muted" />
-                      <text fg={theme.text} wrapMode="word">
-                        {item().statement}
-                      </text>
-
-                      <text fg={theme.text}>
-                        <b>Compliance loop</b>
-                      </text>
-                      <KV
-                        label="Last instruction"
-                        value={item().compliance.last_instruction ?? "unknown"}
-                        tone="muted"
-                      />
-                      <KV
-                        label="Observed response"
-                        value={item().compliance.observed_response ?? "unknown"}
-                        tone="muted"
-                      />
-                      <KV
-                        label="Verdict"
-                        value={item().compliance.verdict.toUpperCase()}
-                        tone={item().compliance.verdict === "complied" ? "success" : "warning"}
-                      />
-                      <KV label="Auto-followups" value={`${item().compliance.followups}`} tone="muted" />
-
-                      <box flexDirection="row" gap={1}>
-                        <Action label="Helpful" onClick={() => void markFeedback(true)} />
-                        <Action label="Not helpful" onClick={() => void markFeedback(false)} />
-                      </box>
-
-                      <text
-                        fg={theme.primary}
-                        onMouseUp={() =>
-                          navigate({
-                            type: "session",
-                            sessionID: item().session_id,
-                          })
-                        }
-                      >
-                        Open session {short(item().session_id)}
-                      </text>
-                    </box>
-                  )}
-                </Show>
-
-                <Show when={panel() === "overview" && view() === "events" && selectedEvent()}>
-                  {(item) => {
-                    const payload = item().payload as Item
-                    const level = sev(payload.severity) ?? "medium"
-                    return (
-                      <box gap={1}>
-                        <KV label="Event ID" value={item().id} />
-                        <KV label="Type" value={label(item().type)} />
-                        <KV label="Session" value={item().session_id} />
-                        <KV label="When" value={Locale.time(item().time.created)} />
-                        <KV label="Severity" value={level.toUpperCase()} tone={tone(level)} />
-                        <text fg={theme.text} wrapMode="word">
-                          {clip(summary(item()), 360)}
-                        </text>
-
-                        <text fg={theme.text}>
-                          <b>Compliance loop</b>
-                        </text>
-                        <KV
-                          label="Last instruction"
-                          value={focusThread()?.compliance.last_instruction ?? "unknown"}
-                          tone="muted"
-                        />
-                        <KV
-                          label="Observed response"
-                          value={focusThread()?.compliance.observed_response ?? "unknown"}
-                          tone="muted"
-                        />
-                        <KV
-                          label="Verdict"
-                          value={(focusThread()?.compliance.verdict ?? "unknown").toUpperCase()}
-                          tone="warning"
-                        />
-                        <KV label="Auto-followups" value={`${focusThread()?.compliance.followups ?? 0}`} tone="muted" />
-
-                        <box flexDirection="row" gap={1}>
-                          <Action label="Helpful" onClick={() => void markFeedback(true)} />
-                          <Action label="Not helpful" onClick={() => void markFeedback(false)} />
-                        </box>
-
-                        <text
-                          fg={theme.primary}
-                          onMouseUp={() =>
-                            navigate({
-                              type: "session",
-                              sessionID: item().session_id,
-                            })
-                          }
-                        >
-                          Open session {short(item().session_id)}
-                        </text>
-                      </box>
-                    )
-                  }}
-                </Show>
-
-                <Show when={panel() === "rules" && selectedRule()}>
-                  {(item) => {
-                    const row = feedback()[item().id]
-                    return (
-                      <box gap={1}>
-                        <KV label="ID" value={item().id} />
-                        <KV label="Scope" value={item().scope} />
-                        <KV label="Kind" value={item().kind} />
-                        <KV label="Severity" value={item().severity.toUpperCase()} tone={tone(item().severity)} />
-                        <KV label="Active" value={item().active ? "yes" : "no"} />
-                        <KV label="Confidence" value={`${item().confidence}`} />
-                        <KV
-                          label="Helpfulness"
-                          value={`${row?.score_7d ?? 0} / ${row?.count_7d ?? 0} (7d)`}
-                          tone="muted"
-                        />
-                        <KV
-                          label="Source"
-                          value={`${item().source?.type ?? "unknown"} ${item().source?.value ?? ""}`}
-                          tone="muted"
-                        />
-                        <text fg={theme.text} wrapMode="word">
-                          {item().statement}
-                        </text>
-                        <Show when={item().scope === "global"}>
-                          <text fg={theme.warning} wrapMode="word">
-                            Global rule: edits affect all projects.
-                          </text>
-                        </Show>
-                        <Show when={item().matcher.tool || item().matcher.pattern || item().matcher.not_pattern}>
-                          <box>
-                            <Show when={item().matcher.tool}>
-                              {(value) => <KV label="Tool" value={value()} tone="muted" />}
-                            </Show>
-                            <Show when={item().matcher.pattern}>
-                              {(value) => <KV label="Pattern" value={value()} tone="muted" />}
-                            </Show>
-                            <Show when={item().matcher.not_pattern}>
-                              {(value) => <KV label="Not Pattern" value={value()} tone="muted" />}
-                            </Show>
-                          </box>
-                        </Show>
-                        <box flexDirection="row" gap={1}>
-                          <Action label="Edit + dry-run" onClick={() => void editRule()} />
-                          <Action label={item().active ? "Deactivate" : "Activate"} onClick={() => void toggleRule()} />
-                          <Action label="Delete" onClick={() => void deleteRule()} />
-                        </box>
-                      </box>
-                    )
-                  }}
-                </Show>
-
-                <Show when={panel() === "interventions" && selectedEvent()}>
-                  {(item) => {
-                    const payload = item().payload as Item
-                    const level = sev(payload.severity) ?? "medium"
-                    return (
-                      <box gap={1}>
-                        <KV label="ID" value={item().id} />
-                        <KV label="Type" value={label(item().type)} />
-                        <KV label="Session" value={item().session_id} />
-                        <KV label="When" value={Locale.time(item().time.created)} />
-                        <KV label="Severity" value={level.toUpperCase()} tone={tone(level)} />
-                        <text fg={theme.text} wrapMode="word">
-                          {summary(item())}
-                        </text>
-                        <Show when={action(item())}>
-                          {(value) => (
-                            <text fg={theme.warning} wrapMode="word">
-                              Action {value()}
-                            </text>
-                          )}
-                        </Show>
-                        <Show when={text(payload.fingerprint)}>
-                          {(value) => <KV label="Fingerprint" value={value()} tone="muted" />}
-                        </Show>
-                        <Show when={payload.level !== undefined}>
-                          <KV label="Level" value={`${payload.level}`} tone="muted" />
-                        </Show>
-                        <text
-                          fg={theme.primary}
-                          onMouseUp={() =>
-                            navigate({
-                              type: "session",
-                              sessionID: item().session_id,
-                            })
-                          }
-                        >
-                          Open session {short(item().session_id)}
-                        </text>
-                      </box>
-                    )
-                  }}
-                </Show>
-
-                <Show when={panel() === "sessions" && selectedSession()}>
-                  {(item) => (
-                    <box gap={1}>
-                      <KV label="Title" value={item().title} />
-                      <KV label="ID" value={item().session_id} />
-                      <KV label="Status" value={item().status} />
-                      <KV label="Mode" value={item().mode} />
-                      <KV label="Model" value={item().model ?? "default"} />
-                      <KV label="Checks" value={`${item().checks}`} />
-                      <KV label="Queue" value={`${item().queue}`} tone={item().queue > 0 ? "warning" : "muted"} />
-                      <KV
-                        label="Unresolved"
-                        value={`${item().unresolved}`}
-                        tone={item().unresolved > 0 ? "warning" : "success"}
-                      />
-                      <KV
-                        label="Interventions"
-                        value={`${item().interventions}`}
-                        tone={item().interventions > 0 ? "warning" : "muted"}
-                      />
-                      <KV label="Tokens" value={`${item().tokens.input}/${item().tokens.output}`} tone="muted" />
-                      <Show when={item().last_violation}>
-                        {(value) => (
-                          <text fg={theme.warning} wrapMode="word">
-                            Last violation {value().statement}
-                          </text>
-                        )}
-                      </Show>
-                      <Show when={item().last_intervention}>
-                        {(value) => (
-                          <text fg={theme.textMuted} wrapMode="word">
-                            Last intervention level {value().level} fingerprint {value().fingerprint}
-                          </text>
-                        )}
-                      </Show>
-                      <text
-                        fg={theme.primary}
-                        onMouseUp={() =>
-                          navigate({
-                            type: "session",
-                            sessionID: item().session_id,
-                          })
-                        }
-                      >
-                        Open session {short(item().session_id)}
-                      </text>
-                    </box>
-                  )}
-                </Show>
-              </scrollbox>
-            </box>
+            </Show>
           </box>
         </Show>
       </Show>
-    </box>
-  )
-}
-
-function Action(props: { label: string; onClick: () => void }) {
-  const { theme } = useTheme()
-  return (
-    <box backgroundColor={theme.backgroundElement} onMouseUp={props.onClick} paddingLeft={1} paddingRight={1}>
-      <text fg={theme.text}>{props.label}</text>
-    </box>
-  )
-}
-
-function KV(props: { label: string; value: string; tone?: "text" | "muted" | "warning" | "success" | "error" }) {
-  const { theme } = useTheme()
-  const color = createMemo(() => {
-    if (props.tone === "warning") return theme.warning
-    if (props.tone === "success") return theme.success
-    if (props.tone === "error") return theme.error
-    if (props.tone === "muted") return theme.textMuted
-    return theme.text
-  })
-  return (
-    <text fg={color()} wrapMode="word">
-      {props.label}: {props.value}
-    </text>
-  )
-}
-
-function Filter(props: { label: string; active: boolean; onClick: () => void }) {
-  const { theme } = useTheme()
-  return (
-    <box
-      backgroundColor={props.active ? theme.backgroundElement : theme.backgroundPanel}
-      onMouseUp={props.onClick}
-      paddingLeft={1}
-      paddingRight={1}
-    >
-      <text fg={props.active ? theme.text : theme.textMuted}>{props.label}</text>
     </box>
   )
 }
