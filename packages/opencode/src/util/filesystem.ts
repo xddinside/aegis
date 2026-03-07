@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, writeFile } from "fs/promises"
 import { createWriteStream, existsSync, statSync } from "fs"
 import { lookup } from "mime-types"
 import { realpathSync } from "fs"
-import { dirname, join, relative } from "path"
+import { basename, dirname, isAbsolute, join, relative, resolve } from "path"
 import { Readable } from "stream"
 import { pipeline } from "stream/promises"
 import { Glob } from "./glob"
@@ -125,14 +125,47 @@ export namespace Filesystem {
         .replace(/^\/mnt\/([a-zA-Z])\//, (_, drive) => `${drive.toUpperCase()}:/`)
     )
   }
+
+  function real(p: string) {
+    return process.platform === "win32" ? realpathSync.native(p) : realpathSync(p)
+  }
+
+  export function canonical(p: string) {
+    const resolved = windowsPath(resolve(p))
+    if (existsSync(resolved)) {
+      return normalizePath(real(resolved))
+    }
+
+    const parts = [basename(resolved)]
+    let current = dirname(resolved)
+    while (true) {
+      if (existsSync(current)) {
+        return normalizePath(join(real(current), ...parts))
+      }
+      const parent = dirname(current)
+      if (parent === current) return
+      parts.unshift(basename(current))
+      current = parent
+    }
+  }
+
   export function overlaps(a: string, b: string) {
-    const relA = relative(a, b)
-    const relB = relative(b, a)
+    const left = canonical(a)
+    const right = canonical(b)
+    if (!left || !right) return false
+    const relA = relative(left, right)
+    const relB = relative(right, left)
     return !relA || !relA.startsWith("..") || !relB || !relB.startsWith("..")
   }
 
   export function contains(parent: string, child: string) {
-    return !relative(parent, child).startsWith("..")
+    const base = canonical(parent)
+    const target = canonical(child)
+    if (!base || !target) return false
+    const rel = relative(base, target)
+    if (!rel) return true
+    if (isAbsolute(rel)) return false
+    return !rel.startsWith("..")
   }
 
   export async function findUp(target: string, start: string, stop?: string) {
