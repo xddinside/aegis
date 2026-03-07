@@ -23,14 +23,14 @@ export const ConfigRoutes = lazy(() =>
             description: "Get config info",
             content: {
               "application/json": {
-                schema: resolver(Config.Info),
+                schema: resolver(Config.PublicInfo),
               },
             },
           },
         },
       }),
       async (c) => {
-        return c.json(await Config.get())
+        return c.json(Config.publicize(await Config.get()))
       },
     )
     .patch(

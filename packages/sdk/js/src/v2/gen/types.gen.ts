@@ -775,10 +775,17 @@ export type AegisRuleScope = "global" | "project"
 
 export type AegisRuleKind = "mined" | "explicit" | "runtime"
 
+export type AegisPolicy = {
+  intent: "default_stack"
+  target: string
+  condition?: "if_no_stack_specified"
+}
+
 export type AegisMatcher = {
   tool?: string
   pattern?: string
   not_pattern?: string
+  policy?: AegisPolicy
 }
 
 export type AegisRuleSource = {
@@ -1523,7 +1530,7 @@ export type KeybindsConfig = {
 export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
 
 /**
- * Server configuration for opencode serve and web commands
+ * Server configuration for aegis serve and web commands
  */
 export type ServerConfig = {
   /**
@@ -1539,7 +1546,7 @@ export type ServerConfig = {
    */
   mdns?: boolean
   /**
-   * Custom domain name for mDNS service (default: opencode.local)
+   * Custom domain name for mDNS service (default: aegis.local)
    */
   mdnsDomain?: string
   /**
@@ -1660,6 +1667,14 @@ export type AegisEscalationConfig = {
   critical_after?: number
 }
 
+export type AegisInterventionConfig = {
+  base_holdoff_ms?: number
+  progress_extend_ms?: number
+  max_holdoff_ms?: number
+  stall_timeout_ms?: number
+  contradiction_bypass?: boolean
+}
+
 /**
  * Aegis supervisor configuration
  */
@@ -1670,6 +1685,369 @@ export type AegisConfig = {
   max_tokens_per_check?: number
   review?: AegisReviewConfig
   escalation?: AegisEscalationConfig
+  intervention?: AegisInterventionConfig
+}
+
+export type PublicProviderConfig = {
+  api?: string
+  name?: string
+  env?: Array<string>
+  id?: string
+  npm?: string
+  models?: {
+    [key: string]: {
+      id?: string
+      name?: string
+      family?: string
+      release_date?: string
+      attachment?: boolean
+      reasoning?: boolean
+      temperature?: boolean
+      tool_call?: boolean
+      interleaved?:
+        | true
+        | {
+            field: "reasoning_content" | "reasoning_details"
+          }
+      cost?: {
+        input: number
+        output: number
+        cache_read?: number
+        cache_write?: number
+        context_over_200k?: {
+          input: number
+          output: number
+          cache_read?: number
+          cache_write?: number
+        }
+      }
+      limit?: {
+        context: number
+        input?: number
+        output: number
+      }
+      modalities?: {
+        input: Array<"text" | "audio" | "image" | "video" | "pdf">
+        output: Array<"text" | "audio" | "image" | "video" | "pdf">
+      }
+      experimental?: boolean
+      status?: "alpha" | "beta" | "deprecated"
+      options?: {
+        [key: string]: unknown
+      }
+      headers?: {
+        [key: string]: string
+      }
+      provider?: {
+        npm?: string
+        api?: string
+      }
+      /**
+       * Variant-specific configuration
+       */
+      variants?: {
+        [key: string]: {
+          /**
+           * Disable this variant for the model
+           */
+          disabled?: boolean
+          [key: string]: unknown | boolean | undefined
+        }
+      }
+    }
+  }
+  whitelist?: Array<string>
+  blacklist?: Array<string>
+  options?: {
+    apiKeyConfigured?: boolean
+    baseURL?: string
+    enterpriseUrl?: string
+    setCacheKey?: boolean
+    timeout?: number | false
+    [key: string]: unknown | boolean | string | number | false | undefined
+  }
+}
+
+export type McpLocalConfig = {
+  /**
+   * Type of MCP server connection
+   */
+  type: "local"
+  /**
+   * Command and arguments to run the MCP server
+   */
+  command: Array<string>
+  /**
+   * Environment variables to set when running the MCP server
+   */
+  environment?: {
+    [key: string]: string
+  }
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+  /**
+   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
+   */
+  timeout?: number
+}
+
+export type PublicMcpOAuthConfig = {
+  /**
+   * OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.
+   */
+  clientId?: string
+  /**
+   * OAuth scopes to request during authorization
+   */
+  scope?: string
+  clientSecretConfigured?: boolean
+}
+
+export type PublicMcpRemoteConfig = {
+  /**
+   * Type of MCP server connection
+   */
+  type: "remote"
+  /**
+   * URL of the remote MCP server
+   */
+  url: string
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+  /**
+   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
+   */
+  timeout?: number
+  headerKeys?: Array<string>
+  oauth?: PublicMcpOAuthConfig | false
+}
+
+export type PublicMcpConfig = McpLocalConfig | PublicMcpRemoteConfig
+
+/**
+ * @deprecated Always uses stretch layout.
+ */
+export type LayoutConfig = "auto" | "stretch"
+
+export type PublicConfig = {
+  /**
+   * JSON schema reference for configuration validation
+   */
+  $schema?: string
+  /**
+   * Theme name to use for the interface
+   */
+  theme?: string
+  keybinds?: KeybindsConfig
+  logLevel?: LogLevel
+  /**
+   * TUI specific settings
+   */
+  tui?: {
+    /**
+     * TUI scroll speed
+     */
+    scroll_speed?: number
+    /**
+     * Scroll acceleration settings
+     */
+    scroll_acceleration?: {
+      /**
+       * Enable scroll acceleration
+       */
+      enabled: boolean
+    }
+    /**
+     * Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column
+     */
+    diff_style?: "auto" | "stacked"
+  }
+  server?: ServerConfig
+  /**
+   * Command configuration
+   */
+  command?: {
+    [key: string]: {
+      template: string
+      description?: string
+      agent?: string
+      model?: string
+      subtask?: boolean
+    }
+  }
+  /**
+   * Additional skill folder paths
+   */
+  skills?: {
+    /**
+     * Additional paths to skill folders
+     */
+    paths?: Array<string>
+    /**
+     * URLs to fetch skills from (e.g., https://example.com/.well-known/skills/)
+     */
+    urls?: Array<string>
+  }
+  watcher?: {
+    ignore?: Array<string>
+  }
+  plugin?: Array<string>
+  snapshot?: boolean
+  /**
+   * Control sharing behavior:'manual' allows manual sharing via commands, 'auto' enables automatic sharing, 'disabled' disables all sharing
+   */
+  share?: "manual" | "auto" | "disabled"
+  /**
+   * @deprecated Use 'share' field instead. Share newly created sessions automatically
+   */
+  autoshare?: boolean
+  /**
+   * Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications
+   */
+  autoupdate?: boolean | "notify"
+  /**
+   * Disable providers that are loaded automatically
+   */
+  disabled_providers?: Array<string>
+  /**
+   * When set, ONLY these providers will be enabled. All other providers will be ignored
+   */
+  enabled_providers?: Array<string>
+  /**
+   * Model to use in the format of provider/model, eg anthropic/claude-2
+   */
+  model?: string
+  /**
+   * Small model to use for tasks like title generation in the format of provider/model
+   */
+  small_model?: string
+  /**
+   * Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.
+   */
+  default_agent?: string
+  /**
+   * Custom username to display in conversations instead of system username
+   */
+  username?: string
+  /**
+   * @deprecated Use `agent` field instead.
+   */
+  mode?: {
+    build?: AgentConfig
+    plan?: AgentConfig
+    [key: string]: AgentConfig | undefined
+  }
+  /**
+   * Agent configuration
+   */
+  agent?: {
+    plan?: AgentConfig
+    build?: AgentConfig
+    general?: AgentConfig
+    explore?: AgentConfig
+    title?: AgentConfig
+    summary?: AgentConfig
+    compaction?: AgentConfig
+    [key: string]: AgentConfig | undefined
+  }
+  aegis?: AegisConfig
+  provider?: {
+    [key: string]: PublicProviderConfig
+  }
+  mcp?: {
+    [key: string]:
+      | PublicMcpConfig
+      | {
+          enabled: boolean
+        }
+  }
+  formatter?:
+    | false
+    | {
+        [key: string]: {
+          disabled?: boolean
+          command?: Array<string>
+          environment?: {
+            [key: string]: string
+          }
+          extensions?: Array<string>
+        }
+      }
+  lsp?:
+    | false
+    | {
+        [key: string]:
+          | {
+              disabled: true
+            }
+          | {
+              command: Array<string>
+              extensions?: Array<string>
+              disabled?: boolean
+              env?: {
+                [key: string]: string
+              }
+              initialization?: {
+                [key: string]: unknown
+              }
+            }
+      }
+  /**
+   * Additional instruction files or patterns to include
+   */
+  instructions?: Array<string>
+  layout?: LayoutConfig
+  permission?: PermissionConfig
+  tools?: {
+    [key: string]: boolean
+  }
+  enterprise?: {
+    /**
+     * Enterprise URL
+     */
+    url?: string
+  }
+  compaction?: {
+    /**
+     * Enable automatic compaction when context is full (default: true)
+     */
+    auto?: boolean
+    /**
+     * Enable pruning of old tool outputs (default: true)
+     */
+    prune?: boolean
+    /**
+     * Token buffer for compaction. Leaves enough window to avoid overflow during compaction.
+     */
+    reserved?: number
+  }
+  experimental?: {
+    disable_paste_summary?: boolean
+    /**
+     * Enable the batch tool
+     */
+    batch_tool?: boolean
+    /**
+     * Enable OpenTelemetry spans for AI SDK calls (using the 'experimental_telemetry' flag)
+     */
+    openTelemetry?: boolean
+    /**
+     * Tools that should only be available to primary agents.
+     */
+    primary_tools?: Array<string>
+    /**
+     * Continue the agent loop when a tool call is denied
+     */
+    continue_loop_on_deny?: boolean
+    /**
+     * Timeout in milliseconds for model context protocol (MCP) requests
+     */
+    mcp_timeout?: number
+  }
 }
 
 export type ProviderConfig = {
@@ -1761,31 +2139,6 @@ export type ProviderConfig = {
   }
 }
 
-export type McpLocalConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "local"
-  /**
-   * Command and arguments to run the MCP server
-   */
-  command: Array<string>
-  /**
-   * Environment variables to set when running the MCP server
-   */
-  environment?: {
-    [key: string]: string
-  }
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-  /**
-   * Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.
-   */
-  timeout?: number
-}
-
 export type McpOAuthConfig = {
   /**
    * OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.
@@ -1830,11 +2183,6 @@ export type McpRemoteConfig = {
   timeout?: number
 }
 
-/**
- * @deprecated Always uses stretch layout.
- */
-export type LayoutConfig = "auto" | "stretch"
-
 export type Config = {
   /**
    * JSON schema reference for configuration validation
@@ -1870,7 +2218,7 @@ export type Config = {
   }
   server?: ServerConfig
   /**
-   * Command configuration, see https://opencode.ai/docs/commands
+   * Command configuration
    */
   command?: {
     [key: string]: {
@@ -1944,7 +2292,7 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
-   * Agent configuration, see https://opencode.ai/docs/agents
+   * Agent configuration
    */
   agent?: {
     plan?: AgentConfig
@@ -2639,7 +2987,7 @@ export type GlobalConfigGetResponses = {
   /**
    * Get global config info
    */
-  200: Config
+  200: PublicConfig
 }
 
 export type GlobalConfigGetResponse = GlobalConfigGetResponses[keyof GlobalConfigGetResponses]
@@ -3009,7 +3357,7 @@ export type ConfigGetResponses = {
   /**
    * Get config info
    */
-  200: Config
+  200: PublicConfig
 }
 
 export type ConfigGetResponse = ConfigGetResponses[keyof ConfigGetResponses]

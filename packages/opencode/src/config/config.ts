@@ -71,34 +71,16 @@ export namespace Config {
     const auth = await Auth.all()
 
     // Config loading order (low -> high precedence): https://opencode.ai/docs/config#precedence-order
-    // 1) Remote .well-known/aegis (org defaults)
-    // 2) Global config (~/.config/aegis/aegis.json{,c})
-    // 3) Custom config (AEGIS_CONFIG)
-    // 4) Project config (aegis.json{,c})
-    // 5) .aegis directories (.aegis/agents/, .aegis/commands/, .aegis/plugins/, .aegis/aegis.json{,c})
-    // 6) Inline config (AEGIS_CONFIG_CONTENT)
+    // 1) Global config (~/.config/aegis/aegis.json{,c})
+    // 2) Custom config (AEGIS_CONFIG)
+    // 3) Project config (aegis.json{,c})
+    // 4) .aegis directories (.aegis/agents/, .aegis/commands/, .aegis/plugins/, .aegis/aegis.json{,c})
+    // 5) Inline config (AEGIS_CONFIG_CONTENT)
     // Managed config directory is enterprise-only and always overrides everything above.
     let result: Info = {}
     for (const [key, value] of Object.entries(auth)) {
       if (value.type === "wellknown") {
-        process.env[value.key] = value.token
-        log.debug("fetching remote config", { url: `${key}/.well-known/aegis` })
-        const response = await fetch(`${key}/.well-known/aegis`)
-        if (!response.ok) {
-          throw new Error(`failed to fetch remote config from ${key}: ${response.status}`)
-        }
-        const wellknown = (await response.json()) as any
-        const remoteConfig = wellknown.config ?? {}
-        // Add $schema to prevent load() from trying to write back to a non-existent file
-        if (!remoteConfig.$schema) remoteConfig.$schema = "https://opencode.ai/config.json"
-        result = merge(
-          result,
-          await load(JSON.stringify(remoteConfig), {
-            dir: path.dirname(`${key}/.well-known/aegis`),
-            source: `${key}/.well-known/aegis`,
-          }),
-        )
-        log.debug("loaded remote config from well-known", { url: key })
+        log.warn("ignoring legacy well-known auth entry", { url: key })
       }
     }
 
@@ -1283,6 +1265,121 @@ export namespace Config {
     })
 
   export type Info = z.output<typeof Info>
+
+  export const PublicProvider = Provider.extend({
+    options: z
+      .object({
+        apiKeyConfigured: z.boolean().optional(),
+        baseURL: z.string().optional(),
+        enterpriseUrl: z.string().optional(),
+        setCacheKey: z.boolean().optional(),
+        timeout: z.union([z.number().int().positive(), z.literal(false)]).optional(),
+      })
+      .catchall(z.any())
+      .optional(),
+  }).meta({
+    ref: "PublicProviderConfig",
+  })
+  export type PublicProvider = z.infer<typeof PublicProvider>
+
+  export const PublicMcpOAuth = McpOAuth.omit({
+    clientSecret: true,
+  })
+    .extend({
+      clientSecretConfigured: z.boolean().optional(),
+    })
+    .meta({
+      ref: "PublicMcpOAuthConfig",
+    })
+  export type PublicMcpOAuth = z.infer<typeof PublicMcpOAuth>
+
+  export const PublicMcpRemote = McpRemote.omit({
+    headers: true,
+    oauth: true,
+  })
+    .extend({
+      headerKeys: z.string().array().optional(),
+      oauth: z.union([PublicMcpOAuth, z.literal(false)]).optional(),
+    })
+    .meta({
+      ref: "PublicMcpRemoteConfig",
+    })
+  export type PublicMcpRemote = z.infer<typeof PublicMcpRemote>
+
+  export const PublicMcp = z.discriminatedUnion("type", [McpLocal, PublicMcpRemote]).meta({
+    ref: "PublicMcpConfig",
+  })
+  export type PublicMcp = z.infer<typeof PublicMcp>
+
+  export const PublicInfo = Info.extend({
+    provider: z.record(z.string(), PublicProvider).optional(),
+    mcp: z
+      .record(
+        z.string(),
+        z.union([
+          PublicMcp,
+          z
+            .object({
+              enabled: z.boolean(),
+            })
+            .strict(),
+        ]),
+      )
+      .optional(),
+  }).meta({
+    ref: "PublicConfig",
+  })
+  export type PublicInfo = z.output<typeof PublicInfo>
+
+  export function publicize(config: Info): PublicInfo {
+    return {
+      ...config,
+      provider: config.provider
+        ? Object.fromEntries(
+            Object.entries(config.provider).map(([key, value]) => [
+              key,
+              (() => {
+                if (!value.options) return value
+                const { apiKey: _, ...options } = value.options
+                return {
+                  ...value,
+                  options: {
+                    ...options,
+                    apiKeyConfigured: Boolean(value.options.apiKey),
+                  },
+                }
+              })(),
+            ]),
+          )
+        : config.provider,
+      mcp: config.mcp
+        ? Object.fromEntries(
+            Object.entries(config.mcp).map(([key, value]) => {
+              if ("type" in value && value.type === "remote") {
+                const { headers: _, oauth, ...remote } = value
+                return [
+                  key,
+                  {
+                    ...remote,
+                    headerKeys: value.headers ? Object.keys(value.headers) : undefined,
+                    oauth: oauth
+                      ? {
+                          ...(() => {
+                            const { clientSecret: _, ...next } = oauth
+                            return next
+                          })(),
+                          clientSecretConfigured: Boolean(oauth.clientSecret),
+                        }
+                      : oauth,
+                  },
+                ]
+              }
+              return [key, value]
+            }),
+          )
+        : config.mcp,
+    }
+  }
 
   export const global = lazy(async () => {
     let result: Info = pipe(
