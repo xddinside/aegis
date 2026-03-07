@@ -97,6 +97,15 @@ export function DialogConnectProvider(props: { provider: string }) {
 
   const method = createMemo(() => (store.methodIndex !== undefined ? methods().at(store.methodIndex!) : undefined))
 
+  const canAutoOpen = (url?: string) => {
+    if (!url) return false
+    try {
+      return new URL(url).protocol === "https:"
+    } catch {
+      return false
+    }
+  }
+
   const methodLabel = (value?: { type?: string; label?: string }) => {
     if (!value) return ""
     if (value.type === "api") return language.t("provider.connect.method.apiKey")
@@ -316,7 +325,7 @@ export function DialogConnectProvider(props: { provider: string }) {
     })
 
     onMount(() => {
-      if (store.authorization?.method === "code" && store.authorization?.url) {
+      if (store.authorization?.method === "code" && canAutoOpen(store.authorization?.url)) {
         platform.openLink(store.authorization.url)
       }
     })
@@ -387,7 +396,7 @@ export function DialogConnectProvider(props: { provider: string }) {
 
     onMount(() => {
       void (async () => {
-        if (store.authorization?.url) {
+        if (canAutoOpen(store.authorization?.url)) {
           platform.openLink(store.authorization.url)
         }
 

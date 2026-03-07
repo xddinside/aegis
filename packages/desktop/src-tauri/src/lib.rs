@@ -42,7 +42,7 @@ struct ServerReadyData {
     url: String,
     username: Option<String>,
     password: Option<String>,
-    is_sidecar: bool
+    is_sidecar: bool,
 }
 
 #[derive(Clone, Copy, serde::Serialize, specta::Type, Debug)]
@@ -58,6 +58,13 @@ enum InitStep {
 enum WslPathMode {
     Windows,
     Linux,
+}
+
+fn wsl_home_path(path: &str, home: &str) -> String {
+    if path == "~" {
+        return home.to_string();
+    }
+    format!("{home}{}", path.strip_prefix('~').unwrap_or(path))
 }
 
 struct InitState {
@@ -390,6 +397,28 @@ fn check_linux_app(app_name: &str) -> bool {
     return true;
 }
 
+#[cfg(windows)]
+fn get_wsl_home() -> Result<String, String> {
+    let output = Command::new("wsl")
+        .args(["-e", "printenv", "HOME"])
+        .output()
+        .map_err(|e| format!("Failed to read WSL home: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            return Err("Failed to read WSL home".to_string());
+        }
+        return Err(stderr);
+    }
+
+    let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if home.is_empty() {
+        return Err("Failed to read WSL home".to_string());
+    }
+    Ok(home)
+}
+
 #[tauri::command]
 #[specta::specta]
 fn wsl_path(path: String, mode: Option<WslPathMode>) -> Result<String, String> {
@@ -402,20 +431,23 @@ fn wsl_path(path: String, mode: Option<WslPathMode>) -> Result<String, String> {
         WslPathMode::Linux => "-u",
     };
 
-    let output = if path.starts_with('~') {
-        let suffix = path.strip_prefix('~').unwrap_or("");
-        let escaped = suffix.replace('"', "\\\"");
-        let cmd = format!("wslpath {flag} \"$HOME{escaped}\"");
-        Command::new("wsl")
-            .args(["-e", "sh", "-lc", &cmd])
-            .output()
-            .map_err(|e| format!("Failed to run wslpath: {e}"))?
+    let path = if path.starts_with('~') {
+        #[cfg(windows)]
+        {
+            wsl_home_path(&path, &get_wsl_home()?)
+        }
+        #[cfg(not(windows))]
+        {
+            path
+        }
     } else {
-        Command::new("wsl")
-            .args(["-e", "wslpath", flag, &path])
-            .output()
-            .map_err(|e| format!("Failed to run wslpath: {e}"))?
+        path
     };
+
+    let output = Command::new("wsl")
+        .args(["-e", "wslpath", flag, &path])
+        .output()
+        .map_err(|e| format!("Failed to run wslpath: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -426,6 +458,29 @@ fn wsl_path(path: String, mode: Option<WslPathMode>) -> Result<String, String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wsl_home_path;
+
+    #[test]
+    fn keeps_plain_home() {
+        assert_eq!(wsl_home_path("~", "/home/test"), "/home/test");
+    }
+
+    #[test]
+    fn expands_home_suffix() {
+        assert_eq!(wsl_home_path("~/work", "/home/test"), "/home/test/work");
+    }
+
+    #[test]
+    fn preserves_suffix_bytes() {
+        assert_eq!(
+            wsl_home_path("~&&whoami", "/home/test"),
+            "/home/test&&whoami"
+        );
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -634,7 +689,12 @@ async fn initialize(app: AppHandle) {
 
                             app.state::<ServerState>().set_child(Some(child));
 
-                            Ok(ServerReadyData { url, username,password, is_sidecar: true })
+                            Ok(ServerReadyData {
+                                url,
+                                username,
+                                password,
+                                is_sidecar: true,
+                            })
                         }
                         .map(move |res| {
                             let _ = server_ready_tx.send(res);

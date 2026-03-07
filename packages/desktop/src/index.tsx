@@ -45,6 +45,17 @@ let update: Update | null = null
 
 const deepLinkEvent = "opencode:deep-link"
 
+const parseUrl = (url: string) => {
+  try {
+    return new URL(url)
+  } catch {
+    return undefined
+  }
+}
+
+const confirmOpen = (url: string) =>
+  window.confirm(`Open this external link?\n\n${url}\n\nOnly HTTPS links are opened without confirmation.`)
+
 const emitDeepLinks = (urls: string[]) => {
   if (urls.length === 0) return
   window.__OPENCODE__ ??= {}
@@ -113,7 +124,10 @@ const createPlatform = (): Platform => {
     },
 
     openLink(url: string) {
-      void shellOpen(url).catch(() => undefined)
+      const parsed = parseUrl(url)
+      if (!parsed) return
+      if (parsed.protocol !== "https:" && !confirmOpen(parsed.toString())) return
+      void shellOpen(parsed.toString()).catch(() => undefined)
     },
     async openPath(path: string, app?: string) {
       const os = ostype()
