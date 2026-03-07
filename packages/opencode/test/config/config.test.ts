@@ -1440,7 +1440,7 @@ test("local .aegis config can override MCP from project config", async () => {
   })
 })
 
-test("project config overrides remote well-known config", async () => {
+test("legacy well-known auth entries do not load remote config", async () => {
   const originalFetch = globalThis.fetch
   let fetchedUrl: string | undefined
   const mockFetch = mock((url: string | URL | Request) => {
@@ -1503,9 +1503,7 @@ test("project config overrides remote well-known config", async () => {
       directory: tmp.path,
       fn: async () => {
         const config = await Config.get()
-        // Verify fetch was called for wellknown config
-        expect(fetchedUrl).toBe("https://example.com/.well-known/aegis")
-        // Project config (enabled: true) should override remote (enabled: false)
+        expect(fetchedUrl).toBeUndefined()
         expect(config.mcp?.jira?.enabled).toBe(true)
       },
     })
@@ -1513,6 +1511,46 @@ test("project config overrides remote well-known config", async () => {
     globalThis.fetch = originalFetch
     Auth.all = originalAuthAll
   }
+})
+
+test("publicize redacts provider and mcp secrets", () => {
+  const result = Config.publicize({
+    provider: {
+      openai: {
+        npm: "@ai-sdk/openai",
+        name: "OpenAI",
+        env: ["OPENAI_API_KEY"],
+        options: {
+          apiKey: "secret",
+          baseURL: "https://api.openai.com",
+        },
+      },
+    },
+    mcp: {
+      secure: {
+        type: "remote",
+        url: "https://mcp.example.com",
+        headers: {
+          Authorization: "Bearer secret",
+          "X-Trace": "trace",
+        },
+        oauth: {
+          clientId: "client",
+          clientSecret: "secret",
+          scope: "read",
+        },
+      },
+    },
+  })
+
+  expect(result.provider?.openai?.options && "apiKey" in result.provider.openai.options).toBe(false)
+  expect(result.provider?.openai?.options?.apiKeyConfigured).toBe(true)
+  const secure = result.mcp?.secure
+  if (!secure || !("type" in secure) || secure.type !== "remote") throw new Error("expected remote mcp")
+  expect("headers" in secure).toBe(false)
+  expect(secure.headerKeys).toEqual(["Authorization", "X-Trace"])
+  expect(secure.oauth ? "clientSecret" in secure.oauth : false).toBe(false)
+  expect(secure.oauth ? secure.oauth.clientSecretConfigured : undefined).toBe(true)
 })
 
 describe("getPluginName", () => {

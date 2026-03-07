@@ -84,6 +84,28 @@ describe("File.read path traversal protection", () => {
       },
     })
   })
+
+  test("rejects symlinked files escaping the project", async () => {
+    if (process.platform === "win32") return
+
+    await using outside = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "secret.txt"), "outside")
+      },
+    })
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await fs.symlink(path.join(outside.path, "secret.txt"), path.join(dir, "escape.txt"))
+      },
+    })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await expect(File.read("escape.txt")).rejects.toThrow("Access denied: path escapes project directory")
+      },
+    })
+  })
 })
 
 describe("File.list path traversal protection", () => {
@@ -110,6 +132,28 @@ describe("File.list path traversal protection", () => {
       fn: async () => {
         const result = await File.list("subdir")
         expect(Array.isArray(result)).toBe(true)
+      },
+    })
+  })
+
+  test("rejects symlinked directories escaping the project", async () => {
+    if (process.platform === "win32") return
+
+    await using outside = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "file.txt"), "content")
+      },
+    })
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await fs.symlink(outside.path, path.join(dir, "escape"))
+      },
+    })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await expect(File.list("escape")).rejects.toThrow("Access denied: path escapes project directory")
       },
     })
   })
@@ -165,6 +209,26 @@ describe("Instance.containsPath", () => {
       directory: tmp.path,
       fn: () => {
         expect(Instance.containsPath(path.join(tmp.path, "..", "escape.txt"))).toBe(false)
+      },
+    })
+  })
+
+  test("returns false for symlink paths escaping the project", async () => {
+    if (process.platform === "win32") return
+
+    await using outside = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "secret.txt"), "outside")
+      },
+    })
+    await using tmp = await tmpdir({ git: true })
+
+    await fs.symlink(path.join(outside.path, "secret.txt"), path.join(tmp.path, "escape.txt"))
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: () => {
+        expect(Instance.containsPath(path.join(tmp.path, "escape.txt"))).toBe(false)
       },
     })
   })
