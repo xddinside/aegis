@@ -195,6 +195,14 @@ export const SessionRoutes = lazy(() =>
         return c.json(await Aegis.workspaceThreads(query))
       },
     )
+    .use("/:sessionID", async (c, next) => {
+      await Session.access(c.req.param("sessionID"))
+      return next()
+    })
+    .use("/:sessionID/*", async (c, next) => {
+      await Session.access(c.req.param("sessionID"))
+      return next()
+    })
     .get(
       "/:sessionID",
       describeRoute({
@@ -223,7 +231,7 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         log.info("SEARCH", { url: c.req.url })
-        const session = await Session.get(sessionID)
+        const session = await Session.access(sessionID)
         return c.json(session)
       },
     )
@@ -715,7 +723,7 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         const updates = c.req.valid("json")
 
-        let session = await Session.get(sessionID)
+        let session = await Session.access(sessionID)
         if (updates.title !== undefined) {
           session = await Session.setTitle({ sessionID, title: updates.title })
         }
@@ -846,7 +854,7 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         await Session.share(sessionID)
-        const session = await Session.get(sessionID)
+        const session = await Session.access(sessionID)
         return c.json(session)
       },
     )
@@ -916,7 +924,7 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         await Session.unshare(sessionID)
-        const session = await Session.get(sessionID)
+        const session = await Session.access(sessionID)
         return c.json(session)
       },
     )
@@ -955,7 +963,7 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
-        const session = await Session.get(sessionID)
+        const session = await Session.access(sessionID)
         await SessionRevert.cleanup(session)
         const msgs = await Session.messages({ sessionID })
         let currentAgent = await Agent.defaultAgent()

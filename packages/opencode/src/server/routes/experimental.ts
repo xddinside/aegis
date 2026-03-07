@@ -222,26 +222,7 @@ export const ExperimentalRoutes = lazy(() =>
         }),
       ),
       async (c) => {
-        const query = c.req.valid("query")
-        const limit = query.limit ?? 100
-        const sessions: Session.GlobalInfo[] = []
-        for await (const session of Session.listGlobal({
-          directory: query.directory,
-          roots: query.roots,
-          start: query.start,
-          cursor: query.cursor,
-          search: query.search,
-          limit: limit + 1,
-          archived: query.archived,
-        })) {
-          sessions.push(session)
-        }
-        const hasMore = sessions.length > limit
-        const list = hasMore ? sessions.slice(0, limit) : sessions
-        if (hasMore && list.length > 0) {
-          c.header("x-next-cursor", String(list[list.length - 1].time.updated))
-        }
-        return c.json(list)
+        return c.notFound()
       },
     )
     .get(
