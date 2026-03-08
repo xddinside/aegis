@@ -421,11 +421,17 @@ describe("aegis", () => {
 
         const memoryDone = await waitFor(async () => {
           const workspace = await Aegis.workspace()
-          return [...workspace.rules.project, ...workspace.rules.global].some((rule) =>
+          return workspace.rules.project.some((rule) =>
             rule.statement.toLowerCase().includes("use nextjs always globally if no stack is specified"),
           )
         })
         expect(memoryDone).toBe(true)
+        const workspace = await Aegis.workspace()
+        expect(
+          workspace.rules.global.some((rule) =>
+            rule.statement.toLowerCase().includes("use nextjs always globally if no stack is specified"),
+          ),
+        ).toBe(false)
 
         await Aegis.observeText({
           sessionID: session.id,
@@ -439,6 +445,44 @@ describe("aegis", () => {
           return snapshot.events.some((event) => event.type === "intervention_injected")
         })
         expect(intervention).toBe(true)
+      },
+    })
+  })
+
+  test("keeps automatically mined memory rules project-scoped", async () => {
+    await using dir = await tmpdir({
+      git: true,
+    })
+
+    await Instance.provide({
+      directory: dir.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await SessionPrompt.prompt({
+          sessionID: session.id,
+          noReply: true,
+          parts: [
+            {
+              type: "text",
+              text: "remember this: use nextjs always globally if no stack is specified",
+            },
+          ],
+        })
+
+        const memoryDone = await waitFor(async () => {
+          const workspace = await Aegis.workspace()
+          return workspace.rules.project.some((rule) =>
+            rule.statement.toLowerCase().includes("use nextjs always globally if no stack is specified"),
+          )
+        })
+        expect(memoryDone).toBe(true)
+
+        const workspace = await Aegis.workspace()
+        expect(
+          workspace.rules.global.some((rule) =>
+            rule.statement.toLowerCase().includes("use nextjs always globally if no stack is specified"),
+          ),
+        ).toBe(false)
       },
     })
   })
@@ -465,11 +509,17 @@ describe("aegis", () => {
 
         const memoryDone = await waitFor(async () => {
           const workspace = await Aegis.workspace()
-          return [...workspace.rules.project, ...workspace.rules.global].some((rule) =>
+          return workspace.rules.project.some((rule) =>
             rule.statement.toLowerCase().includes("use nextjs always globally if no stack is specified"),
           )
         })
         expect(memoryDone).toBe(true)
+        const workspace = await Aegis.workspace()
+        expect(
+          workspace.rules.global.some((rule) =>
+            rule.statement.toLowerCase().includes("use nextjs always globally if no stack is specified"),
+          ),
+        ).toBe(false)
 
         await Aegis.observePatch({
           sessionID: session.id,

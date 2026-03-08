@@ -338,6 +338,18 @@ export namespace Session {
     return fromRow(row)
   })
 
+  export const access = fn(Identifier.schema("session"), async (id) => {
+    const row = Database.use((db) =>
+      db
+        .select()
+        .from(SessionTable)
+        .where(and(eq(SessionTable.id, id), eq(SessionTable.project_id, Instance.project.id)))
+        .get(),
+    )
+    if (!row) throw new NotFoundError({ message: `Session not found: ${id}` })
+    return fromRow(row)
+  })
+
   export const share = fn(Identifier.schema("session"), async (id) => {
     const cfg = await Config.get()
     if (cfg.share === "disabled") {

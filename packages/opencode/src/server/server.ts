@@ -46,12 +46,42 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 export namespace Server {
   const log = Log.create({ service: "server" })
+  const proxyHeaders = new Set([
+    "accept",
+    "accept-encoding",
+    "accept-language",
+    "cache-control",
+    "content-length",
+    "content-type",
+    "if-modified-since",
+    "if-none-match",
+    "range",
+    "referer",
+    "sec-ch-ua",
+    "sec-ch-ua-mobile",
+    "sec-ch-ua-platform",
+    "sec-fetch-dest",
+    "sec-fetch-mode",
+    "sec-fetch-site",
+    "user-agent",
+  ])
 
   let _url: URL | undefined
   let _corsWhitelist: string[] = []
 
   export function url(): URL {
     return _url ?? new URL("http://localhost:4096")
+  }
+
+  function forwardedHeaders(input: Headers) {
+    const result = new Headers()
+    for (const [key, value] of input.entries()) {
+      const lower = key.toLowerCase()
+      if (!proxyHeaders.has(lower)) continue
+      result.set(key, value)
+    }
+    result.set("host", "app.opencode.ai")
+    return result
   }
 
   const app = new Hono()
@@ -72,8 +102,13 @@ export namespace Server {
             return c.json(err.toObject(), { status })
           }
           if (err instanceof HTTPException) return err.getResponse()
-          const message = err instanceof Error && err.stack ? err.stack : err.toString()
-          return c.json(new NamedError.Unknown({ message }).toObject(), {
+          const requestID = crypto.randomUUID()
+          log.error("unhandled request error", {
+            requestID,
+            message: err instanceof Error ? err.message : String(err),
+            error: err,
+          })
+          return c.json(new NamedError.Unknown({ message: `Internal server error (${requestID})` }).toObject(), {
             status: 500,
           })
         })
@@ -548,10 +583,7 @@ export namespace Server {
 
           const response = await proxy(`https://app.opencode.ai${path}`, {
             ...c.req,
-            headers: {
-              ...c.req.raw.headers,
-              host: "app.opencode.ai",
-            },
+            headers: forwardedHeaders(c.req.raw.headers),
           })
           response.headers.set(
             "Content-Security-Policy",

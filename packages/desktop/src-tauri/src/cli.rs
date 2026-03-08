@@ -4,6 +4,7 @@ use process_wrap::tokio::CommandWrap;
 use process_wrap::tokio::ProcessGroup;
 #[cfg(windows)]
 use process_wrap::tokio::{CommandWrapper, JobObject, KillOnDrop};
+use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 use std::sync::Arc;
@@ -134,14 +135,21 @@ pub fn install_cli(app: tauri::AppHandle) -> Result<String, String> {
         return Err("Sidecar binary not found".to_string());
     }
 
-    let temp_script = std::env::temp_dir().join("opencode-install.sh");
-    std::fs::write(&temp_script, INSTALL_SCRIPT)
+    let temp_script =
+        std::env::temp_dir().join(format!("opencode-install-{}.sh", uuid::Uuid::new_v4()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_script)
+        .map_err(|e| format!("Failed to create install script: {}", e))?;
+    file.write_all(INSTALL_SCRIPT.as_bytes())
         .map_err(|e| format!("Failed to write install script: {}", e))?;
+    drop(file);
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&temp_script, std::fs::Permissions::from_mode(0o755))
+        std::fs::set_permissions(&temp_script, std::fs::Permissions::from_mode(0o700))
             .map_err(|e| format!("Failed to set script permissions: {}", e))?;
     }
 

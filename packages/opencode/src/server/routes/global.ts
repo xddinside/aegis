@@ -118,14 +118,14 @@ export const GlobalRoutes = lazy(() =>
             description: "Get global config info",
             content: {
               "application/json": {
-                schema: resolver(Config.Info),
+                schema: resolver(Config.PublicInfo),
               },
             },
           },
         },
       }),
       async (c) => {
-        return c.json(await Config.getGlobal())
+        return c.json(Config.publicize(await Config.getGlobal()))
       },
     )
     .patch(

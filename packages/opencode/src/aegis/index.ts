@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, sql } from "@/storage/db"
+import { and, desc, eq, gte, inArray, isNull, lt, sql, NotFoundError } from "@/storage/db"
 import { Database } from "@/storage/db"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
@@ -810,10 +810,6 @@ export namespace Aegis {
   }
 
   function memoryScope(text: string): RuleScope {
-    const low = text.toLowerCase()
-    if (low.includes("all projects")) return "global"
-    if (low.includes("across projects")) return "global"
-    if (low.includes("globally")) return "global"
     return "project"
   }
 
@@ -971,7 +967,7 @@ export namespace Aegis {
       return value.memories
         .map((item) => ({
           statement: clean(item.statement),
-          scope: item.scope ?? memoryScope(item.statement),
+          scope: "project" as const,
           confidence: item.confidence,
           policy: normalizePolicy(item.policy) ?? statementPolicy(item.statement),
         }))
@@ -995,7 +991,7 @@ export namespace Aegis {
     return value.memories
       .map((item) => ({
         statement: clean(item.statement),
-        scope: item.scope ?? memoryScope(item.statement),
+        scope: "project" as const,
         confidence: item.confidence,
         policy: normalizePolicy(item.policy) ?? statementPolicy(item.statement),
       }))
@@ -1414,7 +1410,8 @@ export namespace Aegis {
       })
       for (const item of Array.from(new Set(phrases)).slice(0, 20)) {
         await createRule({
-          scope: "global",
+          scope: "project",
+          projectID: Instance.project.id,
           kind: "runtime",
           statement: `History hint: avoid ${item}`,
           matcher: {
@@ -2016,6 +2013,43 @@ export namespace Aegis {
     }
   }
 
+  async function timedReview(input: { sessionID: string; observation: Observation; rules: Rule[] }) {
+    const timeout = 1500
+    const fallback = {
+      findings: [] as Finding[],
+      resolves: [] as string[],
+      model: undefined as string | undefined,
+      usage: { input: 0, output: 0 },
+    }
+    const result = await Promise.race([
+      supervisorReview(input).catch((error) => {
+        log.error("aegis supervisor review failed", {
+          error,
+          kind: input.observation.kind,
+        })
+        return fallback
+      }),
+      Bun.sleep(timeout).then(() => {
+        log.warn("aegis supervisor review timed out", {
+          sessionID: input.sessionID,
+          kind: input.observation.kind,
+          timeout,
+        })
+        return fallback
+      }),
+    ])
+    return result
+  }
+
+  function emptyReview() {
+    return {
+      findings: [] as Finding[],
+      resolves: [] as string[],
+      model: undefined as string | undefined,
+      usage: { input: 0, output: 0 },
+    }
+  }
+
   function progressTool(tool?: string) {
     if (!tool) return false
     const low = tool.toLowerCase()
@@ -2568,22 +2602,13 @@ export namespace Aegis {
       recent,
     })
     const deterministic = [...deterministicFindings(obs, rules), ...policyFindings(obs, rules), ...context]
-    const review = await supervisorReview({
-      sessionID: input.sessionID,
-      observation: obs,
-      rules,
-    }).catch((error) => {
-      log.error("aegis supervisor review failed", {
-        error,
-        kind: obs.kind,
-      })
-      return {
-        findings: [] as Finding[],
-        resolves: [] as string[],
-        model: undefined as string | undefined,
-        usage: { input: 0, output: 0 },
-      }
-    })
+    const review = deterministic.length
+      ? emptyReview()
+      : await timedReview({
+          sessionID: input.sessionID,
+          observation: obs,
+          rules,
+        })
 
     await resolveIssues({
       sessionID: input.sessionID,
@@ -2986,8 +3011,19 @@ export namespace Aegis {
     }
 
     const since = Date.now() - value.window_ms
+    const scoped = value.session_id ? ids.filter((id) => id === value.session_id) : ids
+    if (!scoped.length) {
+      return {
+        items: [],
+        now: Now.parse({
+          state: "watching",
+          updated: Date.now(),
+        }),
+        total: 0,
+      }
+    }
     const rows = await workspaceEventRows({
-      sessionIDs: value.session_id ? [value.session_id] : ids,
+      sessionIDs: scoped,
       since,
       limit: 8000,
     })
@@ -3000,7 +3036,7 @@ export namespace Aegis {
     }
 
     const feedback = await feedbackStats({
-      sessionIDs: value.session_id ? [value.session_id] : ids,
+      sessionIDs: scoped,
       since: Date.now() - 7 * 24 * 60 * 60 * 1000,
     })
     const issue = new Map<
@@ -3455,7 +3491,17 @@ export namespace Aegis {
     const eventRow = Database.use((db) =>
       db.select().from(AegisEventTable).where(eq(AegisEventTable.id, value.eventID)).get(),
     )
-    if (!eventRow) return false
+    if (!eventRow) throw new NotFoundError({ message: `Aegis event not found: ${value.eventID}` })
+    if (value.sessionID && eventRow.session_id !== value.sessionID) {
+      throw new NotFoundError({ message: `Aegis event not found: ${value.eventID}` })
+    }
+
+    const sessionRow = Database.use((db) =>
+      db.select().from(SessionTable).where(eq(SessionTable.id, eventRow.session_id)).get(),
+    )
+    if (!sessionRow || sessionRow.project_id !== Instance.project.id) {
+      throw new NotFoundError({ message: `Aegis event not found: ${value.eventID}` })
+    }
 
     const payload = {
       ...eventRow.payload,
@@ -3477,11 +3523,9 @@ export namespace Aegis {
     )
 
     const ruleID = value.rule_id ?? eventRow.rule_id ?? undefined
-    const rule = ruleID
-      ? Database.use((db) => db.select().from(AegisRuleTable).where(eq(AegisRuleTable.id, ruleID)).get())
-      : undefined
+    const rule = ruleID ? await editableRule(ruleID) : undefined
 
-    if (rule && rule.kind !== "explicit") {
+    if (rule && rule.kind !== "explicit" && rule.scope === "project" && rule.project_id === Instance.project.id) {
       const next = Math.max(0, Math.min(100, rule.confidence + (value.helpful ? 5 : -10)))
       Database.use((db) =>
         db.update(AegisRuleTable).set({ confidence: next }).where(eq(AegisRuleTable.id, rule.id)).run(),
